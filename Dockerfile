@@ -39,6 +39,7 @@ RUN VITE_ETHEREUM_CHAIN_ID=__VITE_ETHEREUM_CHAIN_ID__ \
 FROM nginx:alpine
 RUN apk upgrade --no-cache
 COPY --from=builder /app/dist /usr/share/nginx/html
+COPY deployment/nginx.conf /etc/nginx/conf.d/default.conf
 COPY scripts/entrypoint.sh /entrypoint.sh
 # Make html dir writable by nginx user (uid 101) for sed placeholder substitution
 RUN chmod +x /entrypoint.sh && chown -R nginx:nginx /usr/share/nginx/html
