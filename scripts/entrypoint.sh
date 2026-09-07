@@ -29,4 +29,14 @@ find /usr/share/nginx/html/assets -name '*.js' | while read f; do
     "$f"
 done
 
+# Link unfurlers (Twitter, Telegram, Discord, Facebook) require an absolute
+# og:image / twitter:image URL. When PUBLIC_URL is provided (e.g. https://bridge.example.com),
+# rewrite the static tags in index.html so crawlers see a fetchable HTTPS image.
+PUBLIC_ORIGIN="${PUBLIC_URL:-${BRIDGE_UI_PUBLIC_URL:-}}"
+if [ -n "$PUBLIC_ORIGIN" ]; then
+  PUBLIC_ORIGIN="${PUBLIC_ORIGIN%/}"
+  sed -i "s|content=\"/og-image.png\"|content=\"${PUBLIC_ORIGIN}/og-image.png\"|g" \
+    /usr/share/nginx/html/index.html
+fi
+
 exec nginx -g 'daemon off;'

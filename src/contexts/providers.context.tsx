@@ -64,9 +64,9 @@ createAppKit({
     socials: []
   },
   metadata: {
-    description: 'TajirChain Bridge UI',
-    icons: ['https://avatars.githubusercontent.com/u/37784886'],
-    name: 'Tajir Bridge',
+    description: "Bridge ETH and tokens to Tajir Chain",
+    icons: [`${window.location.origin}/logo192.png`, `${window.location.origin}/logo512.png`],
+    name: "Tajir Chain Bridge",
     url: window.location.origin,
   },
   networks,
