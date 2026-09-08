@@ -57,6 +57,8 @@ export const PAGE_SIZE = 50;
 
 export const PENDING_TX_TIMEOUT = 30 * 60 * 1000; // 30min in ms
 
+export const PENDING_TX_CANCEL_GRACE_PERIOD = 2 * 60 * 1000; // 2min in ms
+
 export const BRIDGE_CALL_GAS_LIMIT_INCREASE_PERCENTAGE = 20; // 20%
 
 export const BRIDGE_CALL_PERMIT_GAS_LIMIT_INCREASE = 100000;

@@ -154,16 +154,24 @@ export const useBridgeFormRedesignStyles = createUseStyles((theme: Theme) => ({
     width: "100%",
   },
   fromChain: {
+    "&:hover:not(:disabled)": {
+      background: "#E8ECEE",
+      boxShadow: "none !important",
+      transform: "none !important",
+    },
     alignItems: "center",
-    background: "#f0f0f0",
-    border: "1px solid #f0f0f0",
+    background: "#F3F6F7",
+    border: "1px solid rgba(10, 11, 13, 0.04)",
     borderRadius: 16,
+    boxShadow: "none !important",
     cursor: "pointer",
     display: "flex",
     gap: theme.spacing(0.75),
     marginBottom: -theme.spacing(0.75),
     marginTop: theme.spacing(0.5),
     padding: [theme.spacing(0.75), theme.spacing(1.25)],
+    transform: "none !important",
+    transition: "background 160ms ease",
     [theme.breakpoints.downM]: {
       gap: theme.spacing(0.5),
       maxWidth: "125px",
@@ -204,10 +212,10 @@ export const useBridgeFormRedesignStyles = createUseStyles((theme: Theme) => ({
     width: "100%",
   },
   selectedChainName: {
+    fontWeight: "400 !important",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-
   },
   spinner: {
     margin: "auto",
@@ -215,8 +223,8 @@ export const useBridgeFormRedesignStyles = createUseStyles((theme: Theme) => ({
   },
   toChain: {
     alignItems: "center",
-    background: "#f0f0f0",
-    border: "1px solid #f0f0f0",
+    background: "#F3F6F7",
+    border: "1px solid rgba(10, 11, 13, 0.04)",
     borderRadius: 16,
     display: "flex",
     gap: theme.spacing(0.75),

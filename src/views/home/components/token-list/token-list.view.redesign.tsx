@@ -15,7 +15,7 @@ import { useTokenListRedesignStyles } from "src/views/home/components/token-list
 
 import { Icon } from "src/views/shared/icon/icon.view";
 import { Spinner } from "src/views/shared/spinner/spinner.view";
-import { TokenBalance } from "src/views/shared/token-balance/token-balance.view";
+import { TokenBalanceRedesign } from "src/views/shared/token-balance/token-balances.view.redesign";
 import { Typography } from "src/views/shared/typography/typography.view";
 
 type SelectedChains = {
@@ -249,15 +249,21 @@ export const TokenListRedesign: FC<TokenListProps> = ({
                   <button
                     className={classes.tokenButton}
                     onClick={() => onSelectToken(token)}
-                    role="button"
+                    type="button"
                   >
                     <div className={classes.tokenInfoWithBalance}>
-                      <Typography className={classes.tokenName} type="body1">
-                        {token.name === "ETH" ? "Native Token" : token.name}
-                      </Typography>
+                      <div className={classes.tokenIdentity}>
+                        <Typography className={classes.tokenName} type="body1">
+                          {token.name === "ETH" ? "Native Token" : token.name}
+                        </Typography>
+                        <Typography className={classes.tokenSymbol} type="body2">
+                          {token.symbol}
+                        </Typography>
+                      </div>
                       <div className={classes.tokenBalanceWrapper}>
-                        <TokenBalance
+                        <TokenBalanceRedesign
                           chainId={chains.from.key}
+                          quiet
                           spinnerSize={16}
                           token={token}
                           typographyProps={{ className: classes.tokenBalance, type: "body2" }}
@@ -268,6 +274,7 @@ export const TokenListRedesign: FC<TokenListProps> = ({
                   <button
                     className={classes.tokenInfoButton}
                     onClick={() => onNavigateToTokenInfo(token)}
+                    type="button"
                   >
                     <InfoIcon className={classes.tokenInfoButtonIcon} />
                   </button>

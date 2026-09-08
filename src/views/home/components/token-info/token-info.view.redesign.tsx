@@ -4,7 +4,7 @@ import { TokenSelectorHeaderRedesign } from "../token-selector-header/token-sele
 import { isChainCustomToken } from "src/adapters/storage";
 import DeleteIcon from "src/assets/icons/delete.svg?react";
 import { Chain, Token } from "src/domain";
-import { useTokenInfoStyles } from "src/views/home/components/token-info/token-info.styles";
+import { useTokenInfoRedesignStyles } from "src/views/home/components/token-info/token-info.styles";
 import { TokenInfoTable } from "src/views/home/components/token-info-table/token-info-table.view";
 import { Typography } from "src/views/shared/typography/typography.view";
 
@@ -23,7 +23,7 @@ export const TokenInfoRedesign: FC<TokenInfoProps> = ({
   onRemoveToken,
   token,
 }) => {
-  const classes = useTokenInfoStyles();
+  const classes = useTokenInfoRedesignStyles();
 
   const isImportedCustomToken = isChainCustomToken(token, chain);
 
@@ -32,12 +32,20 @@ export const TokenInfoRedesign: FC<TokenInfoProps> = ({
       <TokenSelectorHeaderRedesign
         onClose={onClose}
         onGoBack={onNavigateToTokenList}
-        title={token.name}
+        title={token.name === "ETH" ? "Native Token" : token.name}
       />
-      <TokenInfoTable className={classes.tokenInfoTable} token={token} />
+      <Typography className={classes.tokenSymbol} type="body2">
+        {token.symbol}
+      </Typography>
+      <TokenInfoTable className={classes.tokenInfoTable} redesign token={token} />
       {isImportedCustomToken && (
-        <button className={classes.removeTokenButton} onClick={() => onRemoveToken(token)}>
-          <DeleteIcon /> <Typography type="body1">Remove custom token</Typography>
+        <button
+          className={classes.removeTokenButton}
+          onClick={() => onRemoveToken(token)}
+          type="button"
+        >
+          <DeleteIcon />
+          <Typography type="body1">Remove custom token</Typography>
         </button>
       )}
     </div>

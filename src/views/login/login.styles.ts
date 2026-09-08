@@ -48,6 +48,37 @@ export const useLoginStyles = createUseStyles((theme: Theme) => ({
     maxWidth: theme.maxWidth,
     width: "100%",
   },
+  policyMessage: {
+    alignItems: "center",
+    background:
+      "linear-gradient(135deg, rgba(65, 201, 171, 0.16) 0%, rgba(243, 205, 82, 0.12) 100%)",
+    border: "1px solid rgba(65, 201, 171, 0.28)",
+    borderRadius: 16,
+    display: "flex",
+    flexDirection: "column",
+    gap: theme.spacing(1.5),
+    padding: [theme.spacing(2.5), theme.spacing(2)],
+    textAlign: "center",
+    [theme.breakpoints.upSm]: {
+      gap: theme.spacing(1.75),
+      padding: [theme.spacing(3), theme.spacing(2.5)],
+    },
+  },
+  policyMessageIcon: {
+    display: "block",
+    height: 32,
+    width: 36,
+  },
+  policyMessageText: {
+    color: theme.palette.grey.veryDark,
+    fontSize: 14,
+    lineHeight: "22px",
+    textAlign: "center",
+    [theme.breakpoints.upSm]: {
+      fontSize: 15,
+      lineHeight: "24px",
+    },
+  },
 }));
 
 export const useLoginRedesignStyles = createUseStyles((theme: Theme) => ({
@@ -130,5 +161,36 @@ export const useLoginRedesignStyles = createUseStyles((theme: Theme) => ({
     flexDirection: "column",
     justifyContent: "center",
     marginBottom: theme.spacing(5),
+  },
+  policyMessage: {
+    alignItems: "center",
+    background:
+      "linear-gradient(135deg, rgba(65, 201, 171, 0.16) 0%, rgba(243, 205, 82, 0.12) 100%)",
+    border: "1px solid rgba(65, 201, 171, 0.28)",
+    borderRadius: 16,
+    display: "flex",
+    flexDirection: "column",
+    gap: theme.spacing(1.5),
+    padding: [theme.spacing(2.5), theme.spacing(2)],
+    textAlign: "center",
+    [theme.breakpoints.upSm]: {
+      gap: theme.spacing(1.75),
+      padding: [theme.spacing(3), theme.spacing(2.5)],
+    },
+  },
+  policyMessageIcon: {
+    display: "block",
+    height: 32,
+    width: 36,
+  },
+  policyMessageText: {
+    color: theme.palette.grey.veryDark,
+    fontSize: 14,
+    lineHeight: "22px",
+    textAlign: "center",
+    [theme.breakpoints.upSm]: {
+      fontSize: 15,
+      lineHeight: "24px",
+    },
   },
 }));
