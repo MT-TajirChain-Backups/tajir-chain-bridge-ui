@@ -22,6 +22,14 @@ export type CommonChain = {
   };
   networkId: number;
   provider: JsonRpcProvider;
+  // The RPC URL handed to the WALLET via wallet_addEthereumChain, which is NOT
+  // the same as `provider.connection.url` that this app uses for its own calls.
+  // The app's URL may be a same-origin proxy path with an Origin check on it;
+  // a wallet sends no Origin and would get 403 on every call, and the user is
+  // left with a dead network entry saved permanently in MetaMask. This must be
+  // a stable public endpoint we are willing to support indefinitely.
+  // Falls back to the app's own RPC URL when no wallet-specific URL is set.
+  walletRpcUrl: string;
 };
 
 export type GptChain = CommonChain & {

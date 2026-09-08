@@ -94,6 +94,7 @@ export const getChains = ({
     poeContractAddress: string;
     rollupManagerAddress: string;
     rpcUrl: string;
+    walletRpcUrl?: string;
   };
   polygonZkEVM: {
     bridgeContractAddress: string;
@@ -101,6 +102,7 @@ export const getChains = ({
     iconUrl?: string;
     networkId: number;
     rpcUrl: string;
+    walletRpcUrl?: string;
   };
 }): Promise<[EthereumChain, ZkEVMChain]> => {
   const ethereumProvider = new StaticJsonRpcProvider(ethereum.rpcUrl);
@@ -155,6 +157,7 @@ export const getChains = ({
           poeContractAddress: ethereum.poeContractAddress,
           provider: ethereumProvider,
           rollupManagerAddress: ethereum.rollupManagerAddress,
+          walletRpcUrl: ethereum.walletRpcUrl || ethereum.rpcUrl,
         },
         {
           bridgeContractAddress: polygonZkEVM.bridgeContractAddress,
@@ -171,6 +174,7 @@ export const getChains = ({
           },
           networkId: polygonZkEVM.networkId,
           provider: polygonZkEVMProvider,
+          walletRpcUrl: polygonZkEVM.walletRpcUrl || polygonZkEVM.rpcUrl,
         },
       ]
   );
