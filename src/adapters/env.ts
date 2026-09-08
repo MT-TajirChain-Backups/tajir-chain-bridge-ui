@@ -35,6 +35,7 @@ type Env = {
   VITE_POLYGON_ZK_EVM_EXPLORER_URL: string;
   VITE_POLYGON_ZK_EVM_NETWORK_ID: string;
   VITE_POLYGON_ZK_EVM_RPC_URL: string;
+  VITE_POLYGON_ZK_EVM_WALLET_RPC_URL?: string;
   VITE_REPORT_FORM_ERROR_ENTRY?: string;
   VITE_REPORT_FORM_PLATFORM_ENTRY?: string;
   VITE_REPORT_FORM_URL?: string;
@@ -192,6 +193,7 @@ const envToDomain = ({
   VITE_POLYGON_ZK_EVM_EXPLORER_URL,
   VITE_POLYGON_ZK_EVM_NETWORK_ID,
   VITE_POLYGON_ZK_EVM_RPC_URL,
+  VITE_POLYGON_ZK_EVM_WALLET_RPC_URL,
   VITE_REPORT_FORM_ERROR_ENTRY,
   VITE_REPORT_FORM_PLATFORM_ENTRY,
   VITE_REPORT_FORM_URL,
@@ -241,6 +243,12 @@ const envToDomain = ({
       iconUrl: iconPath,
       networkId: polygonZkEVMNetworkId,
       rpcUrl: VITE_POLYGON_ZK_EVM_RPC_URL,
+      // Wallet-facing URL for wallet_addEthereumChain. Deliberately separate
+      // from rpcUrl above: rpcUrl may be an Origin-gated same-origin proxy that
+      // works for this page and 403s for a wallet. Empty string is treated as
+      // unset because the deployment substitutes placeholders with "" when the
+      // env var is absent, so `?? ` alone would not fall back.
+      walletRpcUrl: VITE_POLYGON_ZK_EVM_WALLET_RPC_URL || undefined,
     },
   }).then((chains) => {
     const ethereumChain = chains.find((chain) => chain.key === "ethereum");
@@ -314,6 +322,11 @@ const envParser = StrictSchema<Env, domain.Env>()(
       VITE_POLYGON_ZK_EVM_EXPLORER_URL: z.string().url(),
       VITE_POLYGON_ZK_EVM_NETWORK_ID: z.string(),
       VITE_POLYGON_ZK_EVM_RPC_URL: z.string().url(),
+      // Optional, and NOT .url(): when the env var is not set the deployment
+      // substitutes the build placeholder with an empty string, which .url()
+      // would reject and take the whole app down. Empty means "fall back to
+      // VITE_POLYGON_ZK_EVM_RPC_URL".
+      VITE_POLYGON_ZK_EVM_WALLET_RPC_URL: z.string().optional(),
       VITE_REPORT_FORM_ERROR_ENTRY: z.string().optional(),
       VITE_REPORT_FORM_PLATFORM_ENTRY: z.string().optional(),
       VITE_REPORT_FORM_URL: z.string().optional(),
