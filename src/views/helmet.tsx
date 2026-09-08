@@ -21,6 +21,10 @@ export const AppHead = () => {
         <meta content="width=device-width, initial-scale=1.0" name="viewport" />
         <meta content={DEFAULT_DESCRIPTION} name="description" />
         <meta content="index, follow, max-image-preview:large" name="robots" />
+        <meta
+          content="HTcXflFscI1shJ1-8vdyQuiJusHR6OHv5ohjHUuB9Ag"
+          name="google-site-verification"
+        />
         <meta content="#000000" name="theme-color" />
         <title>{title}</title>
         <link href={faviconPath} rel="icon" sizes="any" />
