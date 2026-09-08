@@ -48,9 +48,20 @@ export const Activity: FC = () => {
   const classes = useActivityStyles();
 
   const fetchBridgesAbortController = useRef<AbortController | null>(null);
+  const pollAbortController = useRef<AbortController | null>(null);
+  const lastLoadedItemRef = useRef(lastLoadedItem);
+  const apiBridgesRef = useRef(apiBridges);
 
   const headerBorderObserved = useRef<HTMLDivElement>(null);
   const headerBorderTarget = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    lastLoadedItemRef.current = lastLoadedItem;
+  }, [lastLoadedItem]);
+
+  useEffect(() => {
+    apiBridgesRef.current = apiBridges;
+  }, [apiBridges]);
 
   useIntersection({
     className: classes.stickyContentBorder,
@@ -173,6 +184,24 @@ export const Activity: FC = () => {
   };
 
   useEffect(() => {
+    // Show pending txs immediately (skips cleanup) so a just-submitted bridge
+    // appears before the Bridge API has indexed it.
+    if (env && connectedProvider.status === "successful") {
+      getPendingBridges()
+        .then((data) => {
+          callIfMounted(() => {
+            setPendingBridges({ data, status: "successful" });
+          });
+        })
+        .catch((error) => {
+          callIfMounted(() => {
+            notifyError(error);
+          });
+        });
+    }
+  }, [env, connectedProvider, getPendingBridges, callIfMounted, notifyError]);
+
+  useEffect(() => {
     // Initial API load
     if (env && connectedProvider.status === "successful" && tokens) {
       if (fetchBridgesAbortController.current) {
@@ -210,29 +239,31 @@ export const Activity: FC = () => {
   ]);
 
   useEffect(() => {
-    // Polling bridges
-    if (
-      env &&
-      connectedProvider.status === "successful" &&
-      (apiBridges.status === "successful" || apiBridges.status === "failed")
-    ) {
+    // Polling bridges — do not depend on apiBridges status, otherwise setting
+    // "reloading" retriggers cleanup and aborts the refresh that just started.
+    if (env && connectedProvider.status === "successful") {
       const refreshBridges = () => {
-        setApiBridges(
-          apiBridges.status === "successful"
-            ? { data: apiBridges.data, status: "reloading" }
-            : { status: "loading" }
-        );
+        const prev = apiBridgesRef.current;
 
-        if (fetchBridgesAbortController.current) {
-          fetchBridgesAbortController.current.abort();
+        if (isAsyncTaskDataAvailable<Bridge[], undefined, true>(prev)) {
+          setApiBridges({ data: prev.data, status: "reloading" });
+        } else if (prev.status === "failed") {
+          setApiBridges({ status: "loading" });
+        } else {
+          // Still on initial load — wait for the first fetch to finish
+          return;
         }
 
-        fetchBridgesAbortController.current = new AbortController();
+        if (pollAbortController.current) {
+          pollAbortController.current.abort();
+        }
+
+        pollAbortController.current = new AbortController();
         fetchBridges({
-          abortSignal: fetchBridgesAbortController.current.signal,
+          abortSignal: pollAbortController.current.signal,
           env,
           ethereumAddress: connectedProvider.data.account,
-          quantity: lastLoadedItem,
+          quantity: Math.max(lastLoadedItemRef.current, PAGE_SIZE),
           type: "reload",
         })
           .then(({ bridges, total }) => {
@@ -242,20 +273,19 @@ export const Activity: FC = () => {
           })
           .catch(processFetchBridgesError);
       };
+
       const intervalId = setInterval(refreshBridges, AUTO_REFRESH_RATE);
 
       return () => {
         clearInterval(intervalId);
-        if (fetchBridgesAbortController.current) {
-          fetchBridgesAbortController.current.abort();
+        if (pollAbortController.current) {
+          pollAbortController.current.abort();
         }
       };
     }
   }, [
     connectedProvider,
-    apiBridges,
     env,
-    lastLoadedItem,
     fetchBridges,
     processFetchBridgesError,
     processFetchBridgesSuccess,

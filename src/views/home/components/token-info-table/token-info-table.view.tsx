@@ -8,28 +8,36 @@ import { Token } from "src/domain";
 import { getShortenedEthereumAddress } from "src/utils/addresses";
 import { copyToClipboard } from "src/utils/browser";
 import { isTokenEther } from "src/utils/tokens";
-import { useTokenInfoTableStyles } from "src/views/home/components/token-info-table/token-info-table.styles";
+import {
+  useTokenInfoTableRedesignStyles,
+  useTokenInfoTableStyles,
+} from "src/views/home/components/token-info-table/token-info-table.styles";
 import { Typography } from "src/views/shared/typography/typography.view";
 
 type TokenInfoTableProps = {
   className?: string;
+  redesign?: boolean;
   token: Token;
 };
 
-export const TokenInfoTable: FC<TokenInfoTableProps> = ({ className, token }) => {
-  const classes = useTokenInfoTableStyles();
+export const TokenInfoTable: FC<TokenInfoTableProps> = ({ className, redesign = false, token }) => {
+  const legacyClasses = useTokenInfoTableStyles();
+  const redesignClasses = useTokenInfoTableRedesignStyles();
+  const classes = redesign ? redesignClasses : legacyClasses;
   const env = useEnvContext();
 
   if (!env) {
     return null;
   }
 
+  const valueClassName = redesign ? redesignClasses.value : legacyClasses.alignRow;
+
   const nameRow = (
     <div className={classes.row}>
       <Typography className={classes.alignRow} type="body2">
         Token name
       </Typography>
-      <Typography className={classes.alignRow} type="body1">
+      <Typography className={valueClassName} type="body1">
         {token.name}
       </Typography>
     </div>
@@ -40,7 +48,7 @@ export const TokenInfoTable: FC<TokenInfoTableProps> = ({ className, token }) =>
       <Typography className={classes.alignRow} type="body2">
         Token symbol
       </Typography>
-      <Typography className={classes.alignRow} type="body1">
+      <Typography className={valueClassName} type="body1">
         {token.symbol}
       </Typography>
     </div>
@@ -51,7 +59,7 @@ export const TokenInfoTable: FC<TokenInfoTableProps> = ({ className, token }) =>
       <Typography className={classes.alignRow} type="body2">
         Token decimals
       </Typography>
-      <Typography className={classes.alignRow} type="body1">
+      <Typography className={valueClassName} type="body1">
         {token.decimals}
       </Typography>
     </div>
@@ -77,6 +85,7 @@ export const TokenInfoTable: FC<TokenInfoTableProps> = ({ className, token }) =>
             onClick={() => {
               copyToClipboard(ethereumAddress);
             }}
+            type="button"
           >
             <CopyIcon className={classes.copyIcon} />
           </button>
@@ -109,6 +118,7 @@ export const TokenInfoTable: FC<TokenInfoTableProps> = ({ className, token }) =>
             onClick={() => {
               copyToClipboard(polygonZkEVMAddress);
             }}
+            type="button"
           >
             <CopyIcon className={classes.copyIcon} />
           </button>
@@ -160,6 +170,7 @@ export const TokenInfoTable: FC<TokenInfoTableProps> = ({ className, token }) =>
             onClick={() => {
               copyToClipboard(nativeTokenAddress);
             }}
+            type="button"
           >
             <CopyIcon className={classes.copyIcon} />
           </button>
@@ -191,6 +202,7 @@ export const TokenInfoTable: FC<TokenInfoTableProps> = ({ className, token }) =>
               onClick={() => {
                 copyToClipboard(wrappedTokenAddress);
               }}
+              type="button"
             >
               <CopyIcon className={classes.copyIcon} />
             </button>

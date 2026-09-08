@@ -7,12 +7,13 @@ import { addCustomToken, getChainCustomTokens, removeCustomToken } from "src/ada
 import CaretDown from "src/assets/icons/caret-down.svg?react";
 import { getGasToken } from "src/constants";
 import { useEnvContext } from "src/contexts/env.context";
+import { useErrorContext } from "src/contexts/error.context";
 import { useProvidersContext } from "src/contexts/providers.context";
 import { useTokensContext } from "src/contexts/tokens.context";
 import { AsyncTask, Chain, FormData, Token } from "src/domain";
 import { useCallIfMounted } from "src/hooks/use-call-if-mounted";
 import { getDisplaySymbol, isTokenEther, selectTokenAddress } from "src/utils/tokens";
-import { isAsyncTaskDataAvailable } from "src/utils/types";
+import { isAsyncTaskDataAvailable, isMetaMaskUserRejectedRequestError } from "src/utils/types";
 import { useBridgeFormRedesignStyles } from "src/views/home/components/bridge-form/bridge-form.styles";
 import { Button } from "src/views/shared/button/button.view";
 import { CardRedesign } from "src/views/shared/card/card.view.redesign";
@@ -45,6 +46,7 @@ export const BridgeFormRedesign: FC<BridgeFormProps> = ({
   const classes = useBridgeFormRedesignStyles();
   const callIfMounted = useCallIfMounted();
   const env = useEnvContext();
+  const { notifyError } = useErrorContext();
   const { getErc20TokenBalance, tokens: defaultTokens } = useTokensContext();
   const { changeNetwork, connectedProvider } = useProvidersContext();
   const [balanceFrom, setBalanceFrom] = useState<AsyncTask<BigNumber, string>>({
@@ -72,21 +74,19 @@ export const BridgeFormRedesign: FC<BridgeFormProps> = ({
     return BigNumber.from(0);
   };
 
-  const onChainButtonClick = (from: Chain) => {
-    if (env) {
-      const to = env.chains.find((chain) => chain.key !== from.key);
+  const onChainButtonClick = (chain: Chain) => {
+    setChains(undefined);
+    setAmount(undefined);
 
-      if (to) {
-        setSelectedChains({ from, to });
-        setChains(undefined);
-        setAmount(undefined);
-
-        // Also update the provider network to keep NetworkSelector in sync
-        changeNetwork(from).catch((error) => {
-          console.error("Failed to change network:", error);
-        });
-      }
-    }
+    // Same path as the header NetworkSelector: switch the wallet first.
+    // selectedChains syncs from connectedProvider when the switch succeeds.
+    changeNetwork(chain).catch((error) => {
+      callIfMounted(() => {
+        if (isMetaMaskUserRejectedRequestError(error) === false) {
+          notifyError(error);
+        }
+      });
+    });
   };
 
   const onTokenDropdownClick = (side: "from" | "to") => {
@@ -176,56 +176,44 @@ export const BridgeFormRedesign: FC<BridgeFormProps> = ({
   }, [defaultTokens, selectedChains, tokensSide]);
 
   useEffect(() => {
-    // Load the balances of all the tokens of the primary chain (from)
+    // Load the balances of all the tokens for the active chain together
     const areTokensPending = tokens?.some((tkn) => tkn.balance?.status === "pending");
 
     if (selectedChains && tokens && areTokensPending) {
       const activeChain = tokensSide === "from" ? selectedChains.from : selectedChains.to;
+      const tokensSnapshot = tokens;
 
-      const getUpdatedTokens = (tokens: Token[] | undefined, updatedToken: Token) =>
-        tokens
-          ? tokens.map((tkn) =>
-            tkn.address === updatedToken.address && tkn.chainId === updatedToken.chainId
-              ? updatedToken
-              : tkn
-          )
-          : undefined;
+      setTokens(tokensSnapshot.map((token) => ({ ...token, balance: { status: "loading" } })));
 
-      setTokens(() =>
-        tokens.map((token: Token) => {
+      void Promise.all(
+        tokensSnapshot.map((token) =>
           getTokenBalance(token, activeChain)
-            .then((balance): void => {
-              callIfMounted(() => {
-                const updatedToken: Token = {
-                  ...token,
-                  balance: {
-                    data: balance,
-                    status: "successful",
-                  },
-                };
-
-                setTokens((currentTokens) => getUpdatedTokens(currentTokens, updatedToken));
-              });
-            })
-            .catch(() => {
-              callIfMounted(() => {
-                const updatedToken: Token = {
-                  ...token,
-                  balance: {
-                    error: "Couldn't retrieve token balance",
-                    status: "failed",
-                  },
-                };
-
-                setTokens((currentTokens) => getUpdatedTokens(currentTokens, updatedToken));
-              });
-            });
-
-          return { ...token, balance: { status: "loading" } };
-        })
-      );
+            .then(
+              (balance): Token => ({
+                ...token,
+                balance: {
+                  data: balance,
+                  status: "successful",
+                },
+              })
+            )
+            .catch(
+              (): Token => ({
+                ...token,
+                balance: {
+                  error: "Couldn't retrieve token balance",
+                  status: "failed",
+                },
+              })
+            )
+        )
+      ).then((updatedTokens) => {
+        callIfMounted(() => {
+          setTokens(updatedTokens);
+        });
+      });
     }
-  }, [callIfMounted, defaultTokens, getTokenBalance, selectedChains, tokens, tokensSide]);
+  }, [callIfMounted, getTokenBalance, selectedChains, tokens, tokensSide]);
 
   useEffect(() => {
     // Load the balance of the selected token in both networks
@@ -411,7 +399,6 @@ export const BridgeFormRedesign: FC<BridgeFormProps> = ({
             <Typography className={classes.selectedChainName} type="body1">
               {selectedChains.to.name}
             </Typography>
-            <CaretDown />
           </div>
           <TokenBalanceRedesign
             chainId={selectedChains.to.key}

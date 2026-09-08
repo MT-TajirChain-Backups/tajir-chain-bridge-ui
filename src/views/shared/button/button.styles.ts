@@ -4,19 +4,29 @@ import { Theme } from "src/styles/theme";
 
 export const useButtonStyles = createUseStyles((theme: Theme) => ({
   button: {
+    "&:active&:not(:disabled)": {
+      background: "#E6C043",
+      boxShadow: "none !important",
+      transform: "none !important",
+    },
     "&:disabled": {
-      backgroundColor: "#E8D4A0",
+      background: "#E8D4A0",
+      boxShadow: "none",
+      color: "rgba(10, 11, 13, 0.55)",
       cursor: "default",
-      opacity: 0.7,
+      opacity: 0.8,
     },
     "&:hover&:not(:disabled)": {
-      backgroundColor: theme.palette.primary.dark,
+      background: "#E8C044",
+      boxShadow: "none !important",
+      transform: "none !important",
     },
     alignItems: "center",
-    backgroundColor: "#F3CD52",
+    background: "#F3CD52",
     border: "none",
     borderRadius: 80,
-    color: theme.palette.white,
+    boxShadow: "none !important",
+    color: theme.palette.black,
     cursor: "pointer",
     display: "flex",
     fontSize: "20px",
@@ -24,7 +34,8 @@ export const useButtonStyles = createUseStyles((theme: Theme) => ({
     lineHeight: "24px",
     minWidth: "260px",
     padding: `${theme.spacing(2)}px ${theme.spacing(10)}px`,
-    transition: theme.hoverTransition,
+    transform: "none !important",
+    transition: "background 160ms ease",
     [theme.breakpoints.downM]: {
       fontSize: "16px",
       lineHeight: "20px",

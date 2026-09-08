@@ -5,6 +5,7 @@ import { NetworkBoxRedesign } from "../shared/network-box/network-box.view.redes
 import { WalletListRedesign } from "./components/wallet-list/wallet-list.view.redesign";
 import { routerStateParser } from "src/adapters/browser";
 import { getPolicyCheck, setPolicyCheck } from "src/adapters/storage";
+import WarningIcon from "src/assets/icons/warning.svg?react";
 import { useEnvContext } from "src/contexts/env.context";
 import { useProvidersContext } from "src/contexts/providers.context";
 import { EthereumChainId, PolicyCheck } from "src/domain";
@@ -84,15 +85,18 @@ export const LoginRedesign: FC = () => {
       {showPolicyModal && (
         <ConfirmationModal
           message={
-            <Typography type="body1">
-              DISCLAIMER: This version of the Tajir Bridge will require frequent maintenance and
-              may be restarted if upgrades are needed.
-            </Typography>
+            <div className={classes.policyMessage}>
+              <WarningIcon aria-hidden className={classes.policyMessageIcon} />
+              <Typography className={classes.policyMessageText} type="body2">
+                This version of the Tajir Bridge will require frequent maintenance and may be
+                restarted if upgrades are needed.
+              </Typography>
+            </div>
           }
           onClose={() => setShowPolicyModal(false)}
           onConfirm={onConnectProvider}
           showCancelButton={false}
-          title={`Welcome to the Tajir Bridge ${deploymentName || ""}`}
+          title={`Welcome to the Tajir Bridge${deploymentName ? ` ${deploymentName}` : ""}`}
         />
       )}
     </div>
