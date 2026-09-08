@@ -199,7 +199,11 @@ const ProvidersProvider: FC<PropsWithChildren> = (props) => {
                   chainId: hexValue(chain.chainId),
                   chainName: chain.name,
                   nativeCurrency: chain.nativeCurrency,
-                  rpcUrls: [chain.provider.connection.url],
+                  // NOT chain.provider.connection.url — that is the URL THIS APP
+                  // uses, which may be an Origin-gated proxy path that returns 403
+                  // for a wallet. This value is saved permanently in the user's
+                  // wallet, so it must be the public endpoint.
+                  rpcUrls: [chain.walletRpcUrl],
                 },
               ],
             }).then(async () => {
