@@ -15,6 +15,7 @@ import {
   BRIDGE_CALL_PERMIT_GAS_LIMIT_INCREASE,
   FIAT_DISPLAY_PRECISION,
   GAS_PRICE_INCREASE_PERCENTAGE,
+  PENDING_TX_CANCEL_GRACE_PERIOD,
   PENDING_TX_TIMEOUT,
 } from "src/constants";
 import { useEnvContext } from "src/contexts/env.context";
@@ -618,7 +619,12 @@ const BridgeProvider: FC<PropsWithChildren> = (props) => {
             pendingTx.type === "deposit" ? pendingTx.from.provider : pendingTx.to.provider;
           const tx = await provider.getTransaction(txHash);
 
-          if (isTxCanceled(tx)) {
+          // RPC often returns null for a few seconds after submit (mempool lag).
+          // Only treat null as canceled after the grace period so recent txs stay visible.
+          if (
+            isTxCanceled(tx) &&
+            Date.now() > pendingTx.timestamp + PENDING_TX_CANCEL_GRACE_PERIOD
+          ) {
             return storage.removeAccountPendingTx(account, env, pendingTx.depositTxHash);
           }
 
