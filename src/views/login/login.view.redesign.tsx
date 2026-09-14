@@ -28,16 +28,21 @@ export const LoginRedesign: FC = () => {
 
   const onConnectProvider = () => {
     setPolicyCheck();
-    connectProvider().catch((error) => {
+    void connectProvider().catch((error) => {
       console.error(error);
     });
     setShowPolicyModal(false);
   };
 
   const onCheckAndConnectProvider = () => {
+    if (connectedProvider.status === "reloading") {
+      return;
+    }
     const checked = getPolicyCheck();
     if (checked === PolicyCheck.Checked) {
-      void connectProvider();
+      void connectProvider().catch((error) => {
+        console.error(error);
+      });
     } else {
       setShowPolicyModal(true);
     }
@@ -70,6 +75,9 @@ export const LoginRedesign: FC = () => {
 
         <div className={classes.cardWrap}>
           <WalletListRedesign onSelectWallet={onCheckAndConnectProvider} />
+          {connectedProvider.status === "reloading" && (
+            <InfoBanner message="Check your phone wallet — approve Add Network for Sepolia and Tajir Chain to finish connecting." />
+          )}
           {connectedProvider.status === "failed" && connectedProvider.error !== "Disconnected" && (
             <ErrorMessage error={connectedProvider.error} />
           )}

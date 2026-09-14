@@ -155,7 +155,8 @@ export const NetworkBoxRedesign = () => {
 
   const details = useMemo(
     () => [
-      { icon: "", label: "RPC URL", value: polygonZkEVMChain?.provider.connection.url },
+      // Show the wallet-facing RPC (public), not the app's Origin-gated proxy.
+      { icon: "", label: "RPC URL", value: polygonZkEVMChain?.walletRpcUrl },
       { label: "Chain ID", value: polygonZkEVMChain?.chainId },
       {
         label: "Currency symbol",
@@ -202,16 +203,24 @@ export const NetworkBoxRedesign = () => {
       .catch((error) => {
         callIfMounted(() => {
           void parseError(error).then((parsed) => {
+            const message =
+              error instanceof Error
+                ? error.message
+                : typeof error === "string"
+                  ? error
+                  : parsed;
             if (parsed === "wrong-network") {
               openSnackbar(successMsg);
-            } else if (parsed === "already-added") {
-              // Even if it failed with "already-added", record it in memory!
+            } else if (
+              parsed === "already-added" ||
+              /already (been )?added|chain.*(exists|present)/i.test(message)
+            ) {
               setDiscoveredChainIds((prev) =>
                 prev.includes(targetChain.chainId) ? prev : [...prev, targetChain.chainId]
               );
               openSnackbar(alreadyAddedMsg);
             } else if (isMetaMaskUserRejectedRequestError(error) === false) {
-              notifyError(error);
+              notifyError(error instanceof Error ? error : new Error(message));
             }
           });
         });
