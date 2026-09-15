@@ -10,6 +10,7 @@ import { useProvidersContext } from "src/contexts/providers.context";
 import { FormData, ModalState } from "src/domain";
 import { routes } from "src/routes";
 import { getPartiallyHiddenEthereumAddress } from "src/utils/addresses";
+import { resolveConnectedWalletIcon } from "src/utils/wallet-info";
 import { BridgeForm } from "src/views/home/components/bridge-form/bridge-form.view";
 import { DepositWarningModal } from "src/views/home/components/deposit-warning-modal/deposit-warning-modal.view";
 import { Header } from "src/views/home/components/header/header.view";
@@ -24,6 +25,10 @@ export const Home = (): JSX.Element => {
   const { formData, setFormData } = useFormContext();
   const { connectedProvider } = useProvidersContext();
   const { walletInfo } = useWalletInfo();
+  const connectedWalletIcon = resolveConnectedWalletIcon(
+    walletInfo,
+    connectedProvider.status === "successful" ? connectedProvider.data.provider : undefined
+  );
   const [depositWarningModal, setDepositWarningModal] = useState<ModalState<FormData>>({
     status: "closed",
   });
@@ -64,8 +69,12 @@ export const Home = (): JSX.Element => {
       {connectedProvider.status === "successful" && (
         <>
           <div className={classes.ethereumAddress}>
-            {walletInfo?.icon ? (
-              <img alt={walletInfo?.name || "Wallet"} className={classes.metaMaskIcon} src={walletInfo.icon} />
+            {connectedWalletIcon ? (
+              <img
+                alt={connectedWalletIcon.alt}
+                className={classes.metaMaskIcon}
+                src={connectedWalletIcon.src}
+              />
             ) : (
               <WalletConnectIcon className={classes.metaMaskIcon} />
             )}

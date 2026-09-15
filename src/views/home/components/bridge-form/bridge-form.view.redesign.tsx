@@ -361,11 +361,11 @@ export const BridgeFormRedesign: FC<BridgeFormProps> = ({
             onClick={() => setChains(env.chains)}
             type="button"
           >
-            <selectedChains.from.Icon />
+            <selectedChains.from.Icon className={classes.chainIcon} />
             <Typography className={classes.selectedChainName} type="body1">
               {selectedChains.from.name}
             </Typography>
-            <CaretDown />
+            <CaretDown className={classes.chainCaret} />
           </button>
           <TokenBalanceRedesign
             chainId={selectedChains.from.key}
@@ -395,7 +395,7 @@ export const BridgeFormRedesign: FC<BridgeFormProps> = ({
         </div>
         <div className={classes.mainRow}>
           <div className={classes.toChain}>
-            <selectedChains.to.Icon />
+            <selectedChains.to.Icon className={classes.chainIcon} />
             <Typography className={classes.selectedChainName} type="body1">
               {selectedChains.to.name}
             </Typography>
