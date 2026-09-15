@@ -8,7 +8,6 @@ find /usr/share/nginx/html/assets -name '*.js' | while read f; do
   sed -i \
     -e "s|__VITE_ETHEREUM_CHAIN_ID__|${ETHEREUM_CHAIN_ID:-}|g" \
     -e "s|__VITE_ETHEREUM_RPC_URL__|${ETHEREUM_RPC_URL:-}|g" \
-    -e "s|__VITE_ETHEREUM_WALLET_RPC_URL__|${ETHEREUM_WALLET_RPC_URL:-${ETHEREUM_RPC_URL:-}}|g" \
     -e "s|__VITE_ETHEREUM_EXPLORER_URL__|${ETHEREUM_EXPLORER_URL:-}|g" \
     -e "s|__VITE_ETHEREUM_BRIDGE_CONTRACT_ADDRESS__|${ETHEREUM_BRIDGE_CONTRACT_ADDRESS:-}|g" \
     -e "s|__VITE_ETHEREUM_FORCE_UPDATE_GLOBAL_EXIT_ROOT__|${ETHEREUM_FORCE_UPDATE_GLOBAL_EXIT_ROOT:-true}|g" \

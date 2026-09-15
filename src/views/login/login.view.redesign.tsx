@@ -76,7 +76,7 @@ export const LoginRedesign: FC = () => {
         <div className={classes.cardWrap}>
           <WalletListRedesign onSelectWallet={onCheckAndConnectProvider} />
           {connectedProvider.status === "reloading" && (
-            <InfoBanner message="Check your phone wallet — approve Add Network for Sepolia and Tajir Chain to finish connecting." />
+            <InfoBanner message="Check your wallet — approve Add Network Requests" />
           )}
           {connectedProvider.status === "failed" && connectedProvider.error !== "Disconnected" && (
             <ErrorMessage error={connectedProvider.error} />

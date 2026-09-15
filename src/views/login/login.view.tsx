@@ -93,7 +93,7 @@ export const Login: FC = () => {
             </>
           </Card>
           {connectedProvider.status === "reloading" && (
-            <InfoBanner message="Check your phone wallet — approve Add Network for Sepolia and Tajir Chain to finish connecting." />
+            <InfoBanner message="Check your wallet — approve Add Network Requests" />
           )}
           {connectedProvider.status === "failed" && (
             <ErrorMessage error={connectedProvider.error} />

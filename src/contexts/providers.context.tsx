@@ -9,6 +9,13 @@ import {
   useDisconnect,
 } from "@reown/appkit/react";
 import { Ethers5Adapter } from "@reown/appkit-adapter-ethers5";
+import {
+  ApiController,
+  ConnectionController,
+  ConnectorController,
+  OptionsController,
+  SnackController,
+} from "@reown/appkit-controllers";
 import { hexValue } from "ethers/lib/utils";
 import {
   FC,
@@ -22,6 +29,17 @@ import {
   useState,
 } from "react";
 
+import {
+  COINBASE_WALLET_ID,
+  METAMASK_WALLET_ID,
+  MY_WALLET_ID,
+  TAJIR_WALLET_ID,
+  TRUST_WALLET_ID,
+  getTajirCustomWallet,
+  isTajirEip1193Provider,
+  isTajirInjectedProvider,
+  isTajirWalletName,
+} from "src/constants/wallets";
 import { useEnvContext } from "src/contexts/env.context";
 import { AsyncTask, Chain, ConnectedProvider } from "src/domain";
 import { getChecksumAddress } from "src/utils/addresses";
@@ -140,27 +158,38 @@ const zkEvmNetwork = defineChain({
  * "already added". Keep only eip155:1 in the WC session; add custom chains
  * via EIP-3085 after connect.
  *
- * Also: do not feature Trust's WalletConnect explorer id when the Trust
- * extension is installed — that dual-path causes the same decline message.
+ * Trust is featured so it always shows, extension or not. AppKit replaces the
+ * featured (WalletConnect) Trust entry with the injected EIP-6963 one when the
+ * extension is installed — WalletUtil dedupes them by rdns, so only one row
+ * renders and the click goes down the injected path. The "Connection declined /
+ * previous request is still active" decline comes from a leftover WC proposal,
+ * so connectProvider aborts via resetWcConnection + disconnect before open().
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const networks: [any, ...any[]] = [ethereumMainnet, ethereumNetwork, zkEvmNetwork];
 
-const METAMASK_WALLET_ID = "c57ca95b47569778a828d19178114f4db188b89b763c899ba0be274e97267d96";
-const COINBASE_WALLET_ID = "fd20dc426fb37566d803205b19bbc1d4096b248ac04548e3cfb6b3a38bd033aa";
-
 createAppKit({
   adapters: [new Ethers5Adapter()],
   allowUnsupportedChain: true,
-  allWallets: "SHOW",
+  allWallets: "HIDE",
+  customWallets: [],
   defaultNetwork: ethereumMainnet,
+  // Drop the unnamed generic "Browser Wallet" row. Real extensions still show
+  // through EIP-6963 (MetaMask, Trust, Tajir all announce themselves).
+  enableInjected: false,
   enableReconnect: true,
-  featuredWalletIds: [METAMASK_WALLET_ID, COINBASE_WALLET_ID],
+  excludeWalletIds: [MY_WALLET_ID],
+  featuredWalletIds: [METAMASK_WALLET_ID, TRUST_WALLET_ID, COINBASE_WALLET_ID],
   features: {
     analytics: true,
+    // Default list: MetaMask, Tajir, Trust, Base, Coinbase, WalletConnect.
+    connectorTypeOrder: ["injected", "featured", "external", "custom", "walletConnect"],
     email: false,
     socials: [],
   },
+  // Explorer list is MetaMask / Trust / Coinbase. Tajir is allowed via our
+  // custom id so the installed EIP-6963 connector is not filtered out.
+  includeWalletIds: [METAMASK_WALLET_ID, TRUST_WALLET_ID, COINBASE_WALLET_ID, TAJIR_WALLET_ID],
   metadata: {
     description: "Bridge ETH and tokens to Tajir Chain",
     icons: [`${window.location.origin}/logo192.png`, `${window.location.origin}/logo512.png`],
@@ -185,7 +214,116 @@ createAppKit({
   },
 });
 
-/** Drop stale WalletConnect / AppKit keys that leave proposals "still active". */
+const isTajirConnector = (connector: {
+  info?: { name?: string; rdns?: string };
+  name?: string;
+  provider?: unknown;
+}): boolean =>
+  isTajirWalletName(connector.name) ||
+  isTajirWalletName(connector.info?.name) ||
+  isTajirWalletName(connector.info?.rdns) ||
+  isTajirInjectedProvider(connector.provider);
+
+/**
+ * AppKit hides announced wallets whose explorer id is not in includeWalletIds.
+ * Tajir is not in WalletGuide, so tag the installed connector with our custom
+ * id. Then drop the featured fallback so only one row remains (with "installed").
+ */
+const allowInstalledTajirConnector = (): boolean => {
+  let found = false;
+  const tajirLogo = getTajirCustomWallet().image_url;
+  ConnectorController.state.connectors.forEach((connector) => {
+    if (!isTajirConnector(connector)) {
+      return;
+    }
+    found = true;
+    if (connector.explorerId !== TAJIR_WALLET_ID) {
+      connector.explorerId = TAJIR_WALLET_ID;
+    }
+    if (!connector.imageUrl) {
+      connector.imageUrl = tajirLogo;
+    }
+  });
+  return found;
+};
+
+const sameWalletIds = (
+  left: Array<{ id?: string }> | undefined,
+  right: Array<{ id?: string }>
+): boolean => {
+  const from = left ?? [];
+  return from.length === right.length && from.every((wallet, index) => wallet.id === right[index]?.id);
+};
+
+/**
+ * Default connect-modal order (same wallets/logos, groups only):
+ * MetaMask, Tajir Wallet, Trust Wallet, Base, Coinbase, WalletConnect.
+ * Tajir is spliced into featured when the extension is not installed.
+ * When it is installed, only the EIP-6963 row is shown (installed tag).
+ */
+const syncConnectModalOrder = (): void => {
+  const tajirInstalled = allowInstalledTajirConnector();
+  const explorer = ApiController.state.allFeatured;
+  const metamask = explorer.find((wallet) => wallet.id === METAMASK_WALLET_ID);
+  const trust = explorer.find((wallet) => wallet.id === TRUST_WALLET_ID);
+  const coinbase = explorer.find((wallet) => wallet.id === COINBASE_WALLET_ID);
+
+  const nextFeatured = [metamask, tajirInstalled ? undefined : getTajirCustomWallet(), trust].filter(
+    (wallet): wallet is NonNullable<typeof wallet> => Boolean(wallet)
+  );
+
+  if (!sameWalletIds(ApiController.state.featured, nextFeatured)) {
+    ApiController.state.featured = nextFeatured;
+  }
+
+  const nextCustom = coinbase ? [coinbase] : [];
+  if (!sameWalletIds(OptionsController.state.customWallets, nextCustom)) {
+    OptionsController.setCustomWallets(nextCustom);
+  }
+};
+
+syncConnectModalOrder();
+ConnectorController.subscribeKey("connectors", () => {
+  syncConnectModalOrder();
+});
+ApiController.subscribeKey("allFeatured", () => {
+  syncConnectModalOrder();
+});
+
+if (typeof window !== "undefined") {
+  window.addEventListener("eip6963:announceProvider", (event: Event) => {
+    if (!("detail" in event)) {
+      return;
+    }
+    const detail = event.detail;
+    if (typeof detail !== "object" || detail === null) {
+      return;
+    }
+    const info = "info" in detail ? detail.info : undefined;
+    const infoName =
+      typeof info === "object" && info !== null && "name" in info && typeof info.name === "string"
+        ? info.name
+        : undefined;
+    const infoRdns =
+      typeof info === "object" && info !== null && "rdns" in info && typeof info.rdns === "string"
+        ? info.rdns
+        : undefined;
+    const nestedProvider = "provider" in detail ? detail.provider : undefined;
+    if (
+      isTajirWalletName(infoName) ||
+      isTajirWalletName(infoRdns) ||
+      isTajirInjectedProvider(nestedProvider)
+    ) {
+      syncConnectModalOrder();
+    }
+  });
+  window.dispatchEvent(new Event("eip6963:requestProvider"));
+}
+
+/** Drop stale WalletConnect pairing keys that leave proposals "still active".
+ * Do not wipe @appkit / @w3m caches here — that races AppKit's IndexedDB and
+ * causes "IDBDatabase: The database connection is closing" on first wallet click.
+ */
 const clearStaleWalletConnectStorage = (): void => {
   if (typeof localStorage === "undefined") {
     return;
@@ -197,19 +335,65 @@ const clearStaleWalletConnectStorage = (): void => {
       continue;
     }
     const lower = key.toLowerCase();
-    if (
-      key.startsWith("wc@2:") ||
-      key.startsWith("@w3m") ||
-      key.startsWith("@appkit") ||
-      key.startsWith("W3M") ||
-      lower.includes("walletconnect")
-    ) {
+    if (key.startsWith("wc@2:") || lower.includes("walletconnect")) {
       keysToRemove.push(key);
     }
   }
   keysToRemove.forEach((key) => {
     localStorage.removeItem(key);
   });
+};
+
+const settleMs = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const errorMessageOf = (value: unknown): string => {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value instanceof Error) {
+    return value.message;
+  }
+  if (typeof value === "object" && value !== null && "message" in value) {
+    const message = value.message;
+    return typeof message === "string" ? message : "";
+  }
+  return "";
+};
+
+/** WalletConnect Core surfaces this when IndexedDB was closed mid-handshake. */
+const isIndexedDbClosingError = (value: unknown): boolean => {
+  const lower = errorMessageOf(value).toLowerCase();
+  return (
+    lower.includes("database connection is closing") ||
+    (lower.includes("idbdatabase") && lower.includes("closing"))
+  );
+};
+
+/**
+ * True only when AppKit still holds an in-flight WC URI / pairing.
+ * Always tearing down WC races IndexedDB after enabling an extension without refresh.
+ */
+const hasPendingWalletConnectProposal = (): boolean => {
+  const { status, wcError, wcUri } = ConnectionController.state;
+  return Boolean(wcUri) || wcError === true || status === "connecting";
+};
+
+const recoverWalletConnectIndexedDb = (): void => {
+  try {
+    SnackController.hide();
+  } catch {
+    // ignore
+  }
+  try {
+    ConnectionController.resetWcConnection();
+    ConnectionController.resetUri();
+  } catch {
+    // ignore
+  }
+  clearStaleWalletConnectStorage();
 };
 
 type ProvidersContext = {
@@ -265,11 +449,19 @@ const getEip1193Request = (providerWeb3: Web3Provider) => {
 
   const eip1193 = providerUnknown;
   const requestFn = maybeRequest;
-  const isWalletConnect = Boolean(
-    eip1193.isWalletConnect === true ||
-      eip1193.session !== undefined ||
-      eip1193.client !== undefined
-  );
+  /**
+   * Tajir is a MetaMask fork and speaks EIP-1193 directly. Pinning its requests
+   * to eip155:1 (the only chain in the WC session) makes add/switch a silent
+   * no-op, so the wallet never leaves Ethereum. Treat it as injected — other
+   * wallets keep their existing WalletConnect behaviour.
+   */
+  const isWalletConnect =
+    !isTajirEip1193Provider(eip1193) &&
+    Boolean(
+      eip1193.isWalletConnect === true ||
+        eip1193.session !== undefined ||
+        eip1193.client !== undefined
+    );
 
   const request = (args: Eip1193RequestArgs): Promise<unknown> => {
     if (isWalletConnect) {
@@ -328,6 +520,8 @@ const ProvidersProvider: FC<PropsWithChildren> = (props) => {
   const isOpeningModalRef = useRef(false);
   const walletProviderWaitRef = useRef<ReturnType<typeof setTimeout>>();
   const networkEnsureAttemptedRef = useRef(false);
+  // User rejected all Add Network prompts — don't auto-retry from AppKit "connected".
+  const networkSetupRejectedRef = useRef(false);
 
   const getAppKitNetwork = useCallback((id: number) => {
     if (id === ethereumChainId) {
@@ -384,6 +578,9 @@ const ProvidersProvider: FC<PropsWithChildren> = (props) => {
           : { status: "pending" }
       );
     } else if (isConnected && address && walletProvider) {
+      if (networkSetupRejectedRef.current) {
+        return;
+      }
       try {
         const web3Provider = new Web3Provider(walletProvider, "any");
         const nextData = {
@@ -440,27 +637,98 @@ const ProvidersProvider: FC<PropsWithChildren> = (props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, chainId, isConnected, status, walletProvider]);
 
+  // Hide / recover from WalletConnect IndexedDB "connection is closing" toasts
+  // (common after enabling an extension without refreshing the page).
+  useEffect(() => {
+    const hideIndexedDbSnack = (message: string) => {
+      if (!isIndexedDbClosingError(message)) {
+        return;
+      }
+      recoverWalletConnectIndexedDb();
+    };
+
+    const unsubMessage = SnackController.subscribeKey("message", (message) => {
+      if (SnackController.state.open) {
+        hideIndexedDbSnack(message);
+      }
+    });
+    const unsubOpen = SnackController.subscribeKey("open", (open) => {
+      if (open) {
+        hideIndexedDbSnack(SnackController.state.message);
+      }
+    });
+
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (!isIndexedDbClosingError(event.reason)) {
+        return;
+      }
+      event.preventDefault();
+      recoverWalletConnectIndexedDb();
+    };
+
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    return () => {
+      unsubMessage();
+      unsubOpen();
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
+    };
+  }, []);
+
   const connectProvider = useCallback(async (): Promise<void> => {
     if (isOpeningModalRef.current) {
       return;
     }
     isOpeningModalRef.current = true;
     try {
-      // Trust extension often accepts while AppKit still holds a WC proposal from a
-      // previous attempt ("Connection declined / previous request is still active").
-      // Always tear down AppKit/WC state before opening a fresh connect modal.
+      networkSetupRejectedRef.current = false;
+
       try {
-        await disconnect();
+        await close();
       } catch {
-        // ignore — still attempt a fresh open
+        // ignore
       }
-      clearStaleWalletConnectStorage();
+
+      // Only abort WC when a proposal is actually pending. Always calling
+      // disconnect() / resetWcConnection() closes WalletConnect's IndexedDB
+      // while AppKit still holds the handle → red "database connection is
+      // closing" toast after enabling an extension without a page refresh.
+      // Trust "previous request is still active" still gets cleaned when wcUri
+      // / connecting / wcError is set.
+      if (hasPendingWalletConnectProposal()) {
+        try {
+          ConnectionController.resetWcConnection();
+          ConnectionController.resetUri();
+        } catch {
+          // ignore
+        }
+        try {
+          await disconnect();
+        } catch {
+          // ignore — still attempt a fresh open
+        }
+        await settleMs(400);
+        clearStaleWalletConnectStorage();
+        await settleMs(200);
+      }
+
       setConnectedProvider({ status: "pending" });
       await open();
+    } catch (error) {
+      if (isIndexedDbClosingError(error)) {
+        recoverWalletConnectIndexedDb();
+        await settleMs(300);
+        try {
+          await open();
+        } catch {
+          window.location.reload();
+        }
+        return;
+      }
+      throw error;
     } finally {
       isOpeningModalRef.current = false;
     }
-  }, [disconnect, open]);
+  }, [close, disconnect, open]);
 
   const syncAppKitChain = useCallback(
     async (chainId: number): Promise<void> => {
@@ -602,8 +870,9 @@ const ProvidersProvider: FC<PropsWithChildren> = (props) => {
     [connectedProvider, ensureChainInWallet]
   );
 
-  // After connect: prompt add/switch for both bridge networks (MetaMask WC +
-  // injected). Stay on login until done, then land on L1 when possible.
+  // After connect: prompt add/switch for both bridge networks. Stay on login
+  // until done. Require at least one network accepted — rejecting both stays
+  // on login with an error instead of advancing to /home.
   useEffect(() => {
     if (connectedProvider.status === "failed") {
       networkEnsureAttemptedRef.current = false;
@@ -620,6 +889,8 @@ const ProvidersProvider: FC<PropsWithChildren> = (props) => {
     const session = connectedProvider.data;
 
     void (async () => {
+      let ensuredCount = 0;
+
       for (const chain of env.chains) {
         try {
           await ensureChainInWallet(chain, session.provider);
@@ -628,11 +899,20 @@ const ProvidersProvider: FC<PropsWithChildren> = (props) => {
           } catch {
             // AppKit sync is best-effort
           }
-        } catch (error) {
-          if (!isMetaMaskUserRejectedRequestError(error)) {
-            // Continue setup for remaining chains
-          }
+          ensuredCount += 1;
+        } catch {
+          // User rejected or wallet could not add/switch this chain — try the next.
         }
+      }
+
+      if (ensuredCount === 0) {
+        networkSetupRejectedRef.current = true;
+        setConnectedProvider({
+          error:
+            "Network setup was cancelled. Approve at least one Add Network request to continue.",
+          status: "failed",
+        });
+        return;
       }
 
       // Land on L1 (Sepolia) when possible so the bridge home state is consistent.
@@ -642,7 +922,7 @@ const ProvidersProvider: FC<PropsWithChildren> = (props) => {
           await ensureChainInWallet(l1, session.provider);
           await syncAppKitChain(l1.chainId);
         } catch {
-          // ignore — user may stay on another chain
+          // ignore — user may stay on the network they approved
         }
       }
 
@@ -661,6 +941,7 @@ const ProvidersProvider: FC<PropsWithChildren> = (props) => {
         },
         status: "successful",
       });
+      networkSetupRejectedRef.current = false;
     })();
   }, [connectedProvider, ensureChainInWallet, env, syncAppKitChain]);
 
@@ -679,6 +960,24 @@ const ProvidersProvider: FC<PropsWithChildren> = (props) => {
         } catch {
           // AppKit sync is best-effort when the wallet switch already succeeded
         }
+
+        // Wallets that do not emit a chain change leave AppKit on the chain it
+        // connected with, so read the active chain from the wallet itself.
+        let activeChainId = chain.chainId;
+        try {
+          activeChainId = (await providerWeb3.getNetwork()).chainId;
+        } catch {
+          // keep the requested chain
+        }
+        setConnectedProvider((current) => {
+          if (current.status === "successful") {
+            return { data: { ...current.data, chainId: activeChainId }, status: "successful" };
+          }
+          if (current.status === "reloading") {
+            return { data: { ...current.data, chainId: activeChainId }, status: "reloading" };
+          }
+          return current;
+        });
       } catch (error) {
         if (isMetaMaskUserRejectedRequestError(error)) {
           throw error;
