@@ -30,15 +30,21 @@ export const Login: FC = () => {
 
   const onConnectProvider = () => {
     setPolicyCheck();
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    connectProvider();
+    void connectProvider().catch((error) => {
+      console.error(error);
+    });
     setShowPolicyModal(false);
   };
 
   const onCheckAndConnectProvider = () => {
+    if (connectedProvider.status === "reloading") {
+      return;
+    }
     const checked = getPolicyCheck();
     if (checked === PolicyCheck.Checked) {
-      void connectProvider();
+      void connectProvider().catch((error) => {
+        console.error(error);
+      });
     } else {
       setShowPolicyModal(true);
     }
@@ -86,6 +92,9 @@ export const Login: FC = () => {
               <WalletList onSelectWallet={onCheckAndConnectProvider} />
             </>
           </Card>
+          {connectedProvider.status === "reloading" && (
+            <InfoBanner message="Check your wallet — approve Add Network Requests" />
+          )}
           {connectedProvider.status === "failed" && (
             <ErrorMessage error={connectedProvider.error} />
           )}

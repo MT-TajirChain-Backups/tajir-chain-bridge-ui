@@ -117,7 +117,7 @@ export const NetworkBox: FC = () => {
         <ul className={classes.list}>
           <li className={classes.listItem}>
             <Typography type="body2">
-              RPC URL: {polygonZkEVMChain.provider.connection.url}
+              RPC URL: {polygonZkEVMChain.walletRpcUrl}
             </Typography>
           </li>
           <li className={classes.listItem}>
