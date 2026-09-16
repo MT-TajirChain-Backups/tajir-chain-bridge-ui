@@ -49,13 +49,15 @@ export const FIAT_DISPLAY_PRECISION = 3;
 
 export const TOKEN_DISPLAY_PRECISION = 8;
 
-export const SNACKBAR_AUTO_HIDE_DURATION = 5 * 1000; //5s in ms
+export const SNACKBAR_AUTO_HIDE_DURATION = 5 * 1000; //5s in ms mili seconds
 
 export const AUTO_REFRESH_RATE = 10 * 1000; //10s in ms
 
-export const PAGE_SIZE = 25;
+export const PAGE_SIZE = 50;
 
 export const PENDING_TX_TIMEOUT = 30 * 60 * 1000; // 30min in ms
+
+export const PENDING_TX_CANCEL_GRACE_PERIOD = 2 * 60 * 1000; // 2min in ms
 
 export const BRIDGE_CALL_GAS_LIMIT_INCREASE_PERCENTAGE = 20; // 20%
 
@@ -94,6 +96,7 @@ export const getChains = ({
     poeContractAddress: string;
     rollupManagerAddress: string;
     rpcUrl: string;
+    walletRpcUrl?: string;
   };
   polygonZkEVM: {
     bridgeContractAddress: string;
@@ -101,6 +104,7 @@ export const getChains = ({
     iconUrl?: string;
     networkId: number;
     rpcUrl: string;
+    walletRpcUrl?: string;
   };
 }): Promise<[EthereumChain, ZkEVMChain]> => {
   const ethereumProvider = new StaticJsonRpcProvider(ethereum.rpcUrl);
@@ -155,6 +159,7 @@ export const getChains = ({
           poeContractAddress: ethereum.poeContractAddress,
           provider: ethereumProvider,
           rollupManagerAddress: ethereum.rollupManagerAddress,
+          walletRpcUrl: ethereum.walletRpcUrl || ethereum.rpcUrl,
         },
         {
           bridgeContractAddress: polygonZkEVM.bridgeContractAddress,
@@ -171,6 +176,7 @@ export const getChains = ({
           },
           networkId: polygonZkEVM.networkId,
           provider: polygonZkEVMProvider,
+          walletRpcUrl: polygonZkEVM.walletRpcUrl || polygonZkEVM.rpcUrl,
         },
       ]
   );

@@ -1,9 +1,7 @@
-import { FC, PropsWithChildren, useEffect, useRef, useState } from "react";
+import { FC, PropsWithChildren, useEffect, useRef } from "react";
 
 import { useInfiniteScrollStyles } from "src/views/activity/components/infinite-scroll/infinite-scroll.styles";
 import { Spinner } from "src/views/shared/spinner/spinner.view";
-
-const TRESHOLD = 0.9;
 
 type InfiniteScrollProps = PropsWithChildren<{
   isLoading: boolean;
@@ -16,45 +14,39 @@ export const InfiniteScroll: FC<InfiniteScrollProps> = ({
   onLoadNextPage,
 }) => {
   const classes = useInfiniteScrollStyles();
-  const [scrollReachedEnd, setScrollReachedEnd] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
+  const loaderRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const onScroll = () => {
-      if (
-        ref.current &&
-        ref.current.getBoundingClientRect().bottom * TRESHOLD <= window.innerHeight
-      ) {
-        setScrollReachedEnd(true);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const target = entries[0];
+        if (target.isIntersecting && !isLoading) {
+          onLoadNextPage();
+        }
+      },
+      {
+        root: null,
+        rootMargin: "0px",
+        threshold: 0.1,
+      }
+    );
+
+    const loaderNode = loaderRef.current;
+    if (loaderNode) {
+      observer.observe(loaderNode);
+    }
+
+    return () => {
+      if (loaderNode) {
+        observer.unobserve(loaderNode);
       }
     };
-
-    if (ref.current !== null) {
-      document.addEventListener("scroll", onScroll);
-
-      return () => document.removeEventListener("scroll", onScroll);
-    }
-  }, [ref]);
-
-  useEffect(() => {
-    if (scrollReachedEnd && !isLoading) {
-      onLoadNextPage();
-    }
-    setScrollReachedEnd(false);
-  }, [isLoading, scrollReachedEnd, onLoadNextPage]);
-
-  useEffect(() => {
-    if (ref.current) {
-      const isScrollVisible = ref.current.getBoundingClientRect().height > window.innerHeight;
-      if (isScrollVisible === false) {
-        onLoadNextPage();
-      }
-    }
-  }, [onLoadNextPage]);
+  }, [isLoading, onLoadNextPage]);
 
   return (
-    <div className={classes.root} ref={ref}>
+    <div className={classes.root}>
       {children}
+      <div ref={loaderRef} style={{ height: "1px", width: "100%" }} />
       {isLoading && (
         <div className={classes.spinnerWrapper}>
           <Spinner size={32} />

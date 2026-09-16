@@ -121,6 +121,10 @@ export const useNetworkBoxRedesignStyles = createUseStyles((theme: Theme) => ({
     fontSize: 32,
     fontWeight: 500,
     lineHeight: "40px",
+    [theme.breakpoints.downM]: {
+      fontSize: 22,
+      lineHeight: "28px",
+    },
   },
 
   link: {

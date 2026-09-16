@@ -36,50 +36,49 @@ export const NetworkBoxRedesign = () => {
   const ethereumChain = env?.chains[0];
   const polygonZkEVMChain = env?.chains[1];
 
-  const [discoveredChainIds, setDiscoveredChainIds] = useState<number[]>([]);
+  const isNumberArray = (val: unknown): val is number[] => Array.isArray(val) && val.every((item) => typeof item === "number");
+
+  const [discoveredChainIds, setDiscoveredChainIds] = useState<number[]>(() => {
+    const saved = localStorage.getItem("discoveredChainIds");
+    if (saved) {
+      try { 
+        const parsed: unknown = JSON.parse(saved); 
+        if (isNumberArray(parsed)) {
+          return parsed;
+        }
+      } catch (e) { 
+        return []; 
+      }
+    }
+    return [];
+  });
+
   const [activeChainInBox, setActiveChainInBox] = useState<Chain | undefined>(polygonZkEVMChain);
 
-  // 1. Session Memory: Track all chainIds encountered in this session
+  // Keep localStorage in sync
   useEffect(() => {
-    const ethereum = window.ethereum;
-    if (ethereum) {
-      // Record initial chain
-      if (ethereum.chainId) {
-        const id = parseInt(ethereum.chainId, 16);
-        setDiscoveredChainIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-      }
+    localStorage.setItem("discoveredChainIds", JSON.stringify(discoveredChainIds));
+  }, [discoveredChainIds]);
 
-      // Record any changes
-      const handleChainChanged = (chainId: unknown) => {
-        if (typeof chainId === "string") {
-          const id = parseInt(chainId, 16);
-          setDiscoveredChainIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-        }
-      };
-
-      if (ethereum.on) {
-        ethereum.on("chainChanged", handleChainChanged);
-      }
-      return () => {
-        if (ethereum.removeListener) {
-          ethereum.removeListener("chainChanged", handleChainChanged);
-        }
-      };
+  // 1. Session Memory: Track all chainIds encountered via connectedProvider
+  useEffect(() => {
+    if (isAsyncTaskDataAvailable(connectedProvider)) {
+      const currentId = connectedProvider.data.chainId;
+      setDiscoveredChainIds((prev) => (prev.includes(currentId) ? prev : [...prev, currentId]));
     }
-  }, []);
+  }, [connectedProvider]);
 
   // 2. Dynamic Switching: Show the "other" chain in the box
   useEffect(() => {
-    const ethereum = window.ethereum;
-    if (ethereum?.chainId && ethereumChain && polygonZkEVMChain) {
-      const currentId = parseInt(ethereum.chainId, 16);
+    if (isAsyncTaskDataAvailable(connectedProvider) && ethereumChain && polygonZkEVMChain) {
+      const currentId = connectedProvider.data.chainId;
       if (currentId === ethereumChain.chainId) {
         setActiveChainInBox(polygonZkEVMChain);
       } else if (currentId === polygonZkEVMChain.chainId) {
         setActiveChainInBox(ethereumChain);
       }
     }
-  }, [discoveredChainIds, ethereumChain, polygonZkEVMChain]);
+  }, [connectedProvider, ethereumChain, polygonZkEVMChain]);
 
   const isNetworkAlreadyAdded = useMemo(() => {
     const targetChain = activeChainInBox;
@@ -90,16 +89,19 @@ export const NetworkBoxRedesign = () => {
     return discoveredChainIds.includes(targetChain.chainId);
   }, [discoveredChainIds, activeChainInBox]);
 
+  const isConnected = isAsyncTaskDataAvailable(connectedProvider);
+
   const buttonText = useMemo(() => {
+    if (!isConnected) {
+      return "Connect Wallet First";
+    }
+
     if (isNetworkAlreadyAdded) {
       return "Network Added";
     }
     const networkName = activeChainInBox?.name ?? "";
-    if (isAsyncTaskDataAvailable(connectedProvider)) {
-      return `Switch to ${networkName}`;
-    }
-    return window.innerWidth < 788 ? `Add ${networkName}` : `Add ${networkName} To MetaMask`;
-  }, [isNetworkAlreadyAdded, connectedProvider, activeChainInBox]);
+    return window.innerWidth < 788 ? `Add ${networkName}` : `Add ${networkName} To Wallet`;
+  }, [isConnected, isNetworkAlreadyAdded, activeChainInBox]);
 
   // const name = env?.networkName;
   const symbol = env?.networkSymbol;
@@ -153,7 +155,8 @@ export const NetworkBoxRedesign = () => {
 
   const details = useMemo(
     () => [
-      { icon: "", label: "RPC URL", value: polygonZkEVMChain?.provider.connection.url },
+      // Show the wallet-facing RPC (public), not the app's Origin-gated proxy.
+      { icon: "", label: "RPC URL", value: polygonZkEVMChain?.walletRpcUrl },
       { label: "Chain ID", value: polygonZkEVMChain?.chainId },
       {
         label: "Currency symbol",
@@ -177,9 +180,14 @@ export const NetworkBoxRedesign = () => {
   );
 
   const onAddNetwork = (): void => {
+    if (!isConnected) {
+      return;
+    }
+
     setIsAddNetworkButtonDisabled(true);
     const targetChain = activeChainInBox;
     if (!targetChain) {
+      setIsAddNetworkButtonDisabled(false);
       return;
     }
     addNetwork(targetChain)
@@ -195,16 +203,24 @@ export const NetworkBoxRedesign = () => {
       .catch((error) => {
         callIfMounted(() => {
           void parseError(error).then((parsed) => {
+            const message =
+              error instanceof Error
+                ? error.message
+                : typeof error === "string"
+                  ? error
+                  : parsed;
             if (parsed === "wrong-network") {
               openSnackbar(successMsg);
-            } else if (parsed === "already-added") {
-              // Even if it failed with "already-added", record it in memory!
+            } else if (
+              parsed === "already-added" ||
+              /already (been )?added|chain.*(exists|present)/i.test(message)
+            ) {
               setDiscoveredChainIds((prev) =>
                 prev.includes(targetChain.chainId) ? prev : [...prev, targetChain.chainId]
               );
               openSnackbar(alreadyAddedMsg);
             } else if (isMetaMaskUserRejectedRequestError(error) === false) {
-              notifyError(error);
+              notifyError(error instanceof Error ? error : new Error(message));
             }
           });
         });
@@ -240,7 +256,7 @@ export const NetworkBoxRedesign = () => {
         </div>
         <button
           className={classes.button}
-          disabled={isAddNetworkButtonDisabled || isNetworkAlreadyAdded}
+          disabled={isAddNetworkButtonDisabled || isNetworkAlreadyAdded || !isConnected}
           onClick={onAddNetwork}
         >
           <div className={classes.buttonIconAndTitle}>{buttonText}</div>

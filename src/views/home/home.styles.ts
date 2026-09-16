@@ -35,7 +35,9 @@ export const useHomeRedesignStyles = createUseStyles((theme: Theme) => ({
     display: "flex",
     flexDirection: "column",
     padding: [0, theme.spacing(2)],
+    paddingBottom: theme.spacing(10), // Prevents overlap with fixed bottom snackbar
   },
+
   ethereumAddress: {
     alignItems: "center",
     backgroundColor: theme.palette.grey.main,
@@ -46,6 +48,23 @@ export const useHomeRedesignStyles = createUseStyles((theme: Theme) => ({
     [theme.breakpoints.upSm]: {
       margin: [theme.spacing(3), "auto", theme.spacing(5)],
     },
+  },
+
+  exploreLink: {
+    "&:hover": {
+      textDecoration: "underline",
+    },
+    color: theme.palette.primary.main,
+    cursor: "pointer",
+    fontWeight: 600,
+    textDecoration: "none",
+  },
+  exploreText: {
+    color: theme.palette.grey.dark,
+    fontSize: 14,
+    fontWeight: 500,
+    marginTop: -theme.spacing(1),
+    textAlign: "center",
   },
   metaMaskIcon: {
     marginRight: theme.spacing(1),

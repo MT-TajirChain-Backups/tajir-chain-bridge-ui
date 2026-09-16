@@ -333,7 +333,11 @@ export const BridgeDetailsRedesign: FC = () => {
           value: <Chain chain={to} className={classes.alignRow} />,
         },
         {
-          label: `Step 1 Fee (${bridge.data.from.name})`,
+          label: (
+            <>
+              Step 1 Fee <br className={classes.mobileBreak} />({bridge.data.from.name})
+            </>
+          ),
           value: (
             <>
               {step1FeeString}
@@ -344,7 +348,11 @@ export const BridgeDetailsRedesign: FC = () => {
       ];
 
       bridgeDetailsInfoList.push({
-        label: "Track step 1 transaction",
+        label: (
+          <>
+            Track step 1 <br className={classes.mobileBreak} />transaction
+          </>
+        ),
         value: (
           <button
             className={classes.explorerButton}
@@ -400,7 +408,7 @@ export const BridgeDetailsRedesign: FC = () => {
             {bridge.data.status === "completed" && (
               <div className={classes.row}>
                 <Typography className={classes.alignRow} type="body2">
-                  Step 2 Fee ({bridge.data.to.name})
+                  Step 2 Fee <br className={classes.mobileBreak} />({bridge.data.to.name})
                 </Typography>
                 <Typography className={classes.alignRow} type="body1">
                   {step2FeeString}
@@ -412,7 +420,7 @@ export const BridgeDetailsRedesign: FC = () => {
             {claimTxUrl && (
               <div className={`${classes.row} ${classes.lastRow}`}>
                 <Typography className={classes.alignRow} type="body2">
-                  Track step 2 transaction
+                  Track step 2 <br className={classes.mobileBreak} />transaction
                 </Typography>
                 <a
                   className={classes.explorerButton}
@@ -420,7 +428,7 @@ export const BridgeDetailsRedesign: FC = () => {
                   rel="noreferrer"
                   target="_blank"
                 >
-                  <NewWindowIcon /> <Typography type="body1">View on explorer</Typography>
+                  <NewWindowIcon /> <Typography className={classes.explorerTitle} type="body1">View on explorer</Typography>
                 </a>
               </div>
             )}

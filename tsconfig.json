@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "es6",
+    "target": "es2020",
     "useDefineForClassFields": true,
     "lib": [
       "dom",
@@ -29,7 +29,6 @@
   },
   "include": [
     "src",
-    "vite.config.ts",
     "src/types",
     "typeRoots"
   ],

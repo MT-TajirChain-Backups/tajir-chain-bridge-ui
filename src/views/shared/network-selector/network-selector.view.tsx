@@ -23,12 +23,13 @@ export const NetworkSelector: FC = () => {
 
   useEffect(() => {
     if (env && connectedProvider.status === "successful") {
-      const selectedChain = env.chains.find(
+      let selectedChain = env.chains.find(
         (chain) => chain.chainId === connectedProvider.data.chainId
       );
-      if (selectedChain) {
-        setSelectedChain(selectedChain);
+      if (!selectedChain) {
+        selectedChain = env.chains[0];
       }
+      setSelectedChain(selectedChain);
     }
   }, [connectedProvider, env]);
 

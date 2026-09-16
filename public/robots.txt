@@ -1,3 +1,5 @@
 # https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Disallow: /
+Allow: /
+
+Sitemap: __VITE_PUBLIC_URL__/sitemap.xml

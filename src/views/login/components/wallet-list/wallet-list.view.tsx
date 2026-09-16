@@ -7,7 +7,7 @@ import { useWalletListStyles } from "src/views/login/components/wallet-list/wall
 import { Typography } from "src/views/shared/typography/typography.view";
 
 type WalletListProps = {
-  onSelectWallet: (walletName: WalletName) => void;
+  onSelectWallet: () => void;
 };
 
 export const WalletList: FC<WalletListProps> = ({ onSelectWallet }) => {
@@ -17,13 +17,13 @@ export const WalletList: FC<WalletListProps> = ({ onSelectWallet }) => {
     <ul className={classes.walletList}>
       <li
         className={classes.wallet}
-        onClick={() => onSelectWallet(WalletName.METAMASK)}
+        onClick={() => onSelectWallet()}
         role="button"
       >
-        <WalletIcon className={classes.walletIcon} size="sm" walletName={WalletName.METAMASK} />
+        <WalletIcon className={classes.walletIcon} size="sm" walletName={WalletName.WALLET_CONNECT} />
         <div className={classes.walletInfo}>
           <Typography className={classes.walletName} type="body1">
-            {WalletName.METAMASK}
+            Connect Wallet
           </Typography>
           <Typography type="body2">Connect using web wallet</Typography>
         </div>

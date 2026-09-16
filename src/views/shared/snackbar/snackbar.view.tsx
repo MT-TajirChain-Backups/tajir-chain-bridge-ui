@@ -14,7 +14,7 @@ type SnackbarProps = {
   reportForm: Env["reportForm"];
 }
 
-export const Snackbar: FC<SnackbarProps> = ({ message, onClose }) => {
+export const Snackbar: FC<SnackbarProps> = ({ message, onClose, onReport, reportForm }) => {
   const classes = useSnackbarStyles();
 
   const Icon = ({ message }: { message: Message }): JSX.Element => {
@@ -36,29 +36,39 @@ export const Snackbar: FC<SnackbarProps> = ({ message, onClose }) => {
     }
   }, [message.type, onClose]);
 
-  if (message.type !== "error") {
-    return (
-      <div className={classes.root}>
-        <div className={classes.wrapper}>
-          <Icon message={message} />
-          <p className={classes.message}>{message.text}</p>
-        </div>
-      </div>
-    );
-  } else {
+  const getDisplayText = () => {
+    if (message.type !== "error") { return message.text; }
+    const parsedStr = message.parsed || "";
+    const splitIndex = parsedStr.indexOf("\n>>>>>>>>>> Stringification");
+    const actualMessage = splitIndex !== -1 ? parsedStr.substring(0, splitIndex) : parsedStr;
+    return actualMessage || message.text || "An error occurred";
+  };
 
-    return (
-      <div className={classes.root}>
-        <div className={classes.wrapper}>
-          <Icon message={message} />
-          <p className={classes.message}>
-            An error occurred
-          </p>
-          <button className={classes.closeButton} onClick={onClose}>
-            <CloseIcon className={classes.closeIcon} />
+  const text = getDisplayText();
+
+  const wrapperClass = message.type === "error" || message.type === "error-msg" 
+    ? classes.wrapperError 
+    : classes.wrapperSuccess;
+
+  return (
+    <div className={classes.root}>
+      <div className={`${classes.wrapper} ${wrapperClass}`}>
+        <Icon message={message} />
+        <p className={classes.message}>{text}</p>
+        
+        {message.type === "error" && reportForm?.isEnabled && (
+          <button 
+            className={classes.reportButton} 
+            onClick={() => onReport(message.parsed, reportForm)}
+          >
+            Report
           </button>
-        </div>
+        )}
+
+        <button className={classes.closeButton} onClick={onClose}>
+          <CloseIcon className={classes.closeIcon} />
+        </button>
       </div>
-    );
-  }
+    </div>
+  );
 };

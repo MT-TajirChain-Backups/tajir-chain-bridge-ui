@@ -1,8 +1,8 @@
-import { FC, useState } from "react";
+import { FC, useEffect, useState } from "react";
 
 import { parseError } from "src/adapters/error";
-import MetaMaskIcon from "src/assets/icons/metamask.svg?react";
 import NewWindowIcon from "src/assets/icons/new-window.svg?react";
+import WalletConnectIcon from "src/assets/icons/walletconnect.svg?react";
 import { POLYGON_SUPPORT_URL } from "src/constants";
 import { useEnvContext } from "src/contexts/env.context";
 import { useErrorContext } from "src/contexts/error.context";
@@ -24,6 +24,34 @@ export const NetworkBox: FC = () => {
   const { openSnackbar } = useUIContext();
   const callIfMounted = useCallIfMounted();
   const { notifyError } = useErrorContext();
+
+  const isNumberArray = (val: unknown): val is number[] => Array.isArray(val) && val.every((item) => typeof item === "number");
+
+  const [discoveredChainIds, setDiscoveredChainIds] = useState<number[]>(() => {
+    const saved = localStorage.getItem("discoveredChainIds");
+    if (saved) {
+      try { 
+        const parsed: unknown = JSON.parse(saved); 
+        if (isNumberArray(parsed)) {
+          return parsed;
+        }
+      } catch (e) { 
+        return []; 
+      }
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem("discoveredChainIds", JSON.stringify(discoveredChainIds));
+  }, [discoveredChainIds]);
+
+  useEffect(() => {
+    if (isAsyncTaskDataAvailable(connectedProvider)) {
+      const currentId = connectedProvider.data.chainId;
+      setDiscoveredChainIds((prev) => (prev.includes(currentId) ? prev : [...prev, currentId]));
+    }
+  }, [connectedProvider]);
 
   if (!env) {
     return null;
@@ -49,6 +77,9 @@ export const NetworkBox: FC = () => {
     setIsAddNetworkButtonDisabled(true);
     addNetwork(polygonZkEVMChain)
       .then(() => {
+        setDiscoveredChainIds((prev) =>
+          prev.includes(polygonZkEVMChain.chainId) ? prev : [...prev, polygonZkEVMChain.chainId]
+        );
         callIfMounted(() => {
           openSnackbar(successMsg);
         });
@@ -57,8 +88,14 @@ export const NetworkBox: FC = () => {
         callIfMounted(() => {
           void parseError(error).then((parsed) => {
             if (parsed === "wrong-network") {
+              setDiscoveredChainIds((prev) =>
+                prev.includes(polygonZkEVMChain.chainId) ? prev : [...prev, polygonZkEVMChain.chainId]
+              );
               openSnackbar(successMsg);
             } else if (parsed === "already-added") {
+              setDiscoveredChainIds((prev) =>
+                prev.includes(polygonZkEVMChain.chainId) ? prev : [...prev, polygonZkEVMChain.chainId]
+              );
               openSnackbar(alreadyAddedMsg);
             } else if (isMetaMaskUserRejectedRequestError(error) === false) {
               notifyError(error);
@@ -80,7 +117,7 @@ export const NetworkBox: FC = () => {
         <ul className={classes.list}>
           <li className={classes.listItem}>
             <Typography type="body2">
-              RPC URL: {polygonZkEVMChain.provider.connection.url}
+              RPC URL: {polygonZkEVMChain.walletRpcUrl}
             </Typography>
           </li>
           <li className={classes.listItem}>
@@ -115,13 +152,14 @@ export const NetworkBox: FC = () => {
             className={classes.button}
             disabled={
               isAddNetworkButtonDisabled ||
+              discoveredChainIds.includes(polygonZkEVMChain.chainId) ||
               (isAsyncTaskDataAvailable(connectedProvider) &&
                 connectedProvider.data.chainId === polygonZkEVMChain.chainId)
             }
             onClick={onAddNetwork}
           >
-            <MetaMaskIcon className={classes.buttonIcon} />
-            Add To MetaMask
+            <WalletConnectIcon className={classes.buttonIcon} />
+            {discoveredChainIds.includes(polygonZkEVMChain.chainId) ? "Network Added" : "Add To Wallet"}
           </button>
           <a
             className={classes.button}

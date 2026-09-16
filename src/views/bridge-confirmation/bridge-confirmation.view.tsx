@@ -6,6 +6,7 @@ import { parseError } from "src/adapters/error";
 import { getPermit, isContractAllowedToSpendToken } from "src/adapters/ethereum";
 import { getCurrency } from "src/adapters/storage";
 import ArrowRightIcon from "src/assets/icons/arrow-right.svg?react";
+import tajirIconUrl from "src/assets/icons/chains/tajir.svg";
 import { ETH_TOKEN_LOGO_URI, FIAT_DISPLAY_PRECISION, getEtherToken } from "src/constants";
 import { useBridgeContext } from "src/contexts/bridge.context";
 import { useEnvContext } from "src/contexts/env.context";
@@ -21,7 +22,8 @@ import { routes } from "src/routes";
 import { formatFiatAmount, formatTokenAmount, multiplyAmounts } from "src/utils/amounts";
 import { calculateMaxTxFee } from "src/utils/fees";
 import { getCurrencySymbol } from "src/utils/labels";
-import { isTokenEther, selectTokenAddress } from "src/utils/tokens";
+import { getDisplaySymbol, isTokenEther, selectTokenAddress } from "src/utils/tokens";
+
 import {
   isAsyncTaskDataAvailable,
   isEthersInsufficientFundsError,
@@ -421,7 +423,8 @@ export const BridgeConfirmation: FC = () => {
       ? `${feeBaseErrorString}\nThe maximum transferable amount is 0 after considering the fee`
       : undefined;
 
-  const etherFeeString = `${formatTokenAmount(fee, etherToken)} ${etherToken.symbol}`;
+  const gasFeeIconUrl = from.key === "polygon-zkevm" ? tajirIconUrl : ETH_TOKEN_LOGO_URI;
+  const etherFeeString = `${formatTokenAmount(fee, etherToken)} ${getDisplaySymbol(etherToken, from.key)}`;
   const fiatFeeString = fiatFee ? `${currencySymbol}${formatFiatAmount(fiatFee)}` : undefined;
   const feeString = fiatFeeString ? `${etherFeeString} ~ ${fiatFeeString}` : etherFeeString;
 
@@ -463,7 +466,7 @@ export const BridgeConfirmation: FC = () => {
         <div className={classes.feeBlock}>
           <Typography type="body2">Estimated gas fee</Typography>
           <div className={classes.fee}>
-            <Icon isRounded size={20} url={ETH_TOKEN_LOGO_URI} />
+            <Icon isRounded size={20} url={gasFeeIconUrl} />
             <Typography type="body1">{feeString}</Typography>
           </div>
         </div>

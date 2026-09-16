@@ -7,12 +7,13 @@ import { addCustomToken, getChainCustomTokens, removeCustomToken } from "src/ada
 import CaretDown from "src/assets/icons/caret-down.svg?react";
 import { getGasToken } from "src/constants";
 import { useEnvContext } from "src/contexts/env.context";
+import { useErrorContext } from "src/contexts/error.context";
 import { useProvidersContext } from "src/contexts/providers.context";
 import { useTokensContext } from "src/contexts/tokens.context";
 import { AsyncTask, Chain, FormData, Token } from "src/domain";
 import { useCallIfMounted } from "src/hooks/use-call-if-mounted";
 import { getDisplaySymbol, isTokenEther, selectTokenAddress } from "src/utils/tokens";
-import { isAsyncTaskDataAvailable } from "src/utils/types";
+import { isAsyncTaskDataAvailable, isMetaMaskUserRejectedRequestError } from "src/utils/types";
 import { useBridgeFormRedesignStyles } from "src/views/home/components/bridge-form/bridge-form.styles";
 import { Button } from "src/views/shared/button/button.view";
 import { CardRedesign } from "src/views/shared/card/card.view.redesign";
@@ -25,6 +26,7 @@ import { Typography } from "src/views/shared/typography/typography.view";
 type BridgeFormProps = {
   account: string;
   formData?: FormData;
+  onLoaded?: (loaded: boolean) => void;
   onResetForm: () => void;
   onSubmit: (formData: FormData) => void;
 };
@@ -37,12 +39,14 @@ type SelectedChains = {
 export const BridgeFormRedesign: FC<BridgeFormProps> = ({
   account,
   formData,
+  onLoaded,
   onResetForm,
   onSubmit,
 }) => {
   const classes = useBridgeFormRedesignStyles();
   const callIfMounted = useCallIfMounted();
   const env = useEnvContext();
+  const { notifyError } = useErrorContext();
   const { getErc20TokenBalance, tokens: defaultTokens } = useTokensContext();
   const { changeNetwork, connectedProvider } = useProvidersContext();
   const [balanceFrom, setBalanceFrom] = useState<AsyncTask<BigNumber, string>>({
@@ -70,21 +74,19 @@ export const BridgeFormRedesign: FC<BridgeFormProps> = ({
     return BigNumber.from(0);
   };
 
-  const onChainButtonClick = (from: Chain) => {
-    if (env) {
-      const to = env.chains.find((chain) => chain.key !== from.key);
+  const onChainButtonClick = (chain: Chain) => {
+    setChains(undefined);
+    setAmount(undefined);
 
-      if (to) {
-        setSelectedChains({ from, to });
-        setChains(undefined);
-        setAmount(undefined);
-
-        // Also update the provider network to keep NetworkSelector in sync
-        changeNetwork(from).catch((error) => {
-          console.error("Failed to change network:", error);
-        });
-      }
-    }
+    // Same path as the header NetworkSelector: switch the wallet first.
+    // selectedChains syncs from connectedProvider when the switch succeeds.
+    changeNetwork(chain).catch((error) => {
+      callIfMounted(() => {
+        if (isMetaMaskUserRejectedRequestError(error) === false) {
+          notifyError(error);
+        }
+      });
+    });
   };
 
   const onTokenDropdownClick = (side: "from" | "to") => {
@@ -174,56 +176,44 @@ export const BridgeFormRedesign: FC<BridgeFormProps> = ({
   }, [defaultTokens, selectedChains, tokensSide]);
 
   useEffect(() => {
-    // Load the balances of all the tokens of the primary chain (from)
+    // Load the balances of all the tokens for the active chain together
     const areTokensPending = tokens?.some((tkn) => tkn.balance?.status === "pending");
 
     if (selectedChains && tokens && areTokensPending) {
       const activeChain = tokensSide === "from" ? selectedChains.from : selectedChains.to;
+      const tokensSnapshot = tokens;
 
-      const getUpdatedTokens = (tokens: Token[] | undefined, updatedToken: Token) =>
-        tokens
-          ? tokens.map((tkn) =>
-            tkn.address === updatedToken.address && tkn.chainId === updatedToken.chainId
-              ? updatedToken
-              : tkn
-          )
-          : undefined;
+      setTokens(tokensSnapshot.map((token) => ({ ...token, balance: { status: "loading" } })));
 
-      setTokens(() =>
-        tokens.map((token: Token) => {
+      void Promise.all(
+        tokensSnapshot.map((token) =>
           getTokenBalance(token, activeChain)
-            .then((balance): void => {
-              callIfMounted(() => {
-                const updatedToken: Token = {
-                  ...token,
-                  balance: {
-                    data: balance,
-                    status: "successful",
-                  },
-                };
-
-                setTokens((currentTokens) => getUpdatedTokens(currentTokens, updatedToken));
-              });
-            })
-            .catch(() => {
-              callIfMounted(() => {
-                const updatedToken: Token = {
-                  ...token,
-                  balance: {
-                    error: "Couldn't retrieve token balance",
-                    status: "failed",
-                  },
-                };
-
-                setTokens((currentTokens) => getUpdatedTokens(currentTokens, updatedToken));
-              });
-            });
-
-          return { ...token, balance: { status: "loading" } };
-        })
-      );
+            .then(
+              (balance): Token => ({
+                ...token,
+                balance: {
+                  data: balance,
+                  status: "successful",
+                },
+              })
+            )
+            .catch(
+              (): Token => ({
+                ...token,
+                balance: {
+                  error: "Couldn't retrieve token balance",
+                  status: "failed",
+                },
+              })
+            )
+        )
+      ).then((updatedTokens) => {
+        callIfMounted(() => {
+          setTokens(updatedTokens);
+        });
+      });
     }
-  }, [callIfMounted, defaultTokens, getTokenBalance, selectedChains, tokens, tokensSide]);
+  }, [callIfMounted, getTokenBalance, selectedChains, tokens, tokensSide]);
 
   useEffect(() => {
     // Load the balance of the selected token in both networks
@@ -259,8 +249,13 @@ export const BridgeFormRedesign: FC<BridgeFormProps> = ({
   useEffect(() => {
     // Load the default values after the network is changed
     if (env && connectedProvider.status === "successful" && formData === undefined) {
-      const from = env.chains.find((chain) => chain.chainId === connectedProvider.data.chainId);
-      const to = env.chains.find((chain) => chain.chainId !== connectedProvider.data.chainId);
+      let from = env.chains.find((chain) => chain.chainId === connectedProvider.data.chainId);
+      let to = env.chains.find((chain) => chain.chainId !== connectedProvider.data.chainId);
+
+      if (!from) {
+        from = env.chains[0];
+        to = env.chains.find((chain) => chain.chainId !== from?.chainId) || env.chains[1];
+      }
 
       if (from && to) {
         setSelectedChains({ from, to });
@@ -283,7 +278,13 @@ export const BridgeFormRedesign: FC<BridgeFormProps> = ({
     }
   }, [formData, onResetForm]);
 
-  if (!env || !selectedChains || !tokens || !token) {
+  const isLoaded = !!(env && selectedChains && tokens && token);
+
+  useEffect(() => {
+    onLoaded?.(isLoaded);
+  }, [isLoaded, onLoaded]);
+
+  if (!isLoaded) {
     return (
       <div className={classes.spinner}>
         <Spinner />
@@ -297,83 +298,81 @@ export const BridgeFormRedesign: FC<BridgeFormProps> = ({
   return (
     <form className={classes.form} onSubmit={onFormSubmit}>
       <CardRedesign className={classes.card}>
-        <div className={classes.row}>
-          <div className={classes.leftBox}>
-            <Typography type="body2">From</Typography>
-            <button
-              className={classes.fromChain}
-              onClick={() => setChains(env.chains)}
-              type="button"
-            >
-              <selectedChains.from.Icon />
-              <Typography className={classes.selectedChainName} type="body1">
-                {selectedChains.from.name}
-              </Typography>
-              <CaretDown />
-            </button>
-          </div>
-          <div className={classes.rightBox}>
-            <div className={classes.topActionsRow}>
-              <div className={classes.topQuickActions}>
-                <button
-                  className={classes.topQuickActionButton}
-                  disabled={fromBalance.eq(0)}
-                  onClick={() => {
-                    if (!fromBalance.eq(0)) {
-                      const nextAmount = fromBalance.mul(25).div(100);
-                      setAmount(nextAmount);
-                      setInputError(undefined);
-                    }
-                  }}
-                  type="button"
-                >
-                  <Typography className={classes.topQuickActionText} type="body2">
-                    25%
-                  </Typography>
-                </button>
-                <button
-                  className={classes.topQuickActionButton}
-                  disabled={fromBalance.eq(0)}
-                  onClick={() => {
-                    if (!fromBalance.eq(0)) {
-                      const nextAmount = fromBalance.mul(50).div(100);
-                      setAmount(nextAmount);
-                      setInputError(undefined);
-                    }
-                  }}
-                  type="button"
-                >
-                  <Typography className={classes.topQuickActionText} type="body2">
-                    50%
-                  </Typography>
-                </button>
-                <button
-                  className={classes.topQuickActionButton}
-                  disabled={fromBalance.eq(0)}
-                  onClick={() => {
-                    if (!fromBalance.eq(0)) {
-                      setAmount(fromBalance);
-                      setInputError(undefined);
-                    }
-                  }}
-                  type="button"
-                >
-                  <Typography className={classes.topQuickActionText} type="body2">
-                    Max
-                  </Typography>
-                </button>
-              </div>
-              <Typography className={classes.balanceLabel} type="body2">
-                Balance
-              </Typography>
+        <div className={classes.headerRow}>
+          <Typography type="body2">From</Typography>
+          <div className={classes.topActionsRow}>
+            <div className={classes.topQuickActions}>
+              <button
+                className={classes.topQuickActionButton}
+                disabled={fromBalance.eq(0)}
+                onClick={() => {
+                  if (!fromBalance.eq(0)) {
+                    const nextAmount = fromBalance.mul(25).div(100);
+                    setAmount(nextAmount);
+                    setInputError(undefined);
+                  }
+                }}
+                type="button"
+              >
+                <Typography className={classes.topQuickActionText} type="body2">
+                  25%
+                </Typography>
+              </button>
+              <button
+                className={classes.topQuickActionButton}
+                disabled={fromBalance.eq(0)}
+                onClick={() => {
+                  if (!fromBalance.eq(0)) {
+                    const nextAmount = fromBalance.mul(50).div(100);
+                    setAmount(nextAmount);
+                    setInputError(undefined);
+                  }
+                }}
+                type="button"
+              >
+                <Typography className={classes.topQuickActionText} type="body2">
+                  50%
+                </Typography>
+              </button>
+              <button
+                className={classes.topQuickActionButton}
+                disabled={fromBalance.eq(0)}
+                onClick={() => {
+                  if (!fromBalance.eq(0)) {
+                    setAmount(fromBalance);
+                    setInputError(undefined);
+                  }
+                }}
+                type="button"
+              >
+                <Typography className={classes.topQuickActionText} type="body2">
+                  Max
+                </Typography>
+              </button>
             </div>
-            <TokenBalanceRedesign
-              chainId={selectedChains.from.key}
-              spinnerSize={14}
-              token={{ ...token, balance: balanceFrom }}
-              typographyProps={{ type: "body1" }}
-            />
+            <Typography className={classes.balanceLabel} type="body2">
+              Balance
+            </Typography>
           </div>
+        </div>
+        <div className={classes.mainRow}>
+          <button
+            className={classes.fromChain}
+            onClick={() => setChains(env.chains)}
+            type="button"
+          >
+            <selectedChains.from.Icon className={classes.chainIcon} />
+            <Typography className={classes.selectedChainName} type="body1">
+              {selectedChains.from.name}
+            </Typography>
+            <CaretDown className={classes.chainCaret} />
+          </button>
+          <TokenBalanceRedesign
+            chainId={selectedChains.from.key}
+            spinnerSize={14}
+            token={{ ...token, balance: balanceFrom }}
+            typographyProps={{ type: "body1" }}
+          />
         </div>
         <div className={classes.inputRow}>
           <button className={classes.tokenSelector} onClick={() => onTokenDropdownClick("from")} type="button">
@@ -390,28 +389,25 @@ export const BridgeFormRedesign: FC<BridgeFormProps> = ({
           />
         </div>
 
-        <div className={classes.row}>
-          <div className={classes.leftBox}>
-            <Typography type="body2">To</Typography>
-            <div className={classes.toChain}>
-              <selectedChains.to.Icon />
-              <Typography className={classes.selectedChainName} type="body1">
-                {selectedChains.to.name}
-              </Typography>
-              <CaretDown />
-            </div>
-          </div>
-          <div className={classes.rightBox}>
-            <Typography type="body2">Balance</Typography>
-            <TokenBalanceRedesign
-              chainId={selectedChains.to.key}
-              spinnerSize={14}
-              token={{ ...token, balance: balanceTo }}
-              typographyProps={{ type: "body1" }}
-            />
-          </div>
+        <div className={classes.headerRow}>
+          <Typography type="body2">To</Typography>
+          <Typography className={classes.balanceLabel} type="body2">Balance</Typography>
         </div>
-        <div className={classes.inputRow}>
+        <div className={classes.mainRow}>
+          <div className={classes.toChain}>
+            <selectedChains.to.Icon className={classes.chainIcon} />
+            <Typography className={classes.selectedChainName} type="body1">
+              {selectedChains.to.name}
+            </Typography>
+          </div>
+          <TokenBalanceRedesign
+            chainId={selectedChains.to.key}
+            spinnerSize={14}
+            token={{ ...token, balance: balanceTo }}
+            typographyProps={{ type: "body1" }}
+          />
+        </div>
+        <div className={`${classes.inputRow} ${classes.inputRowLast}`}>
           <button className={classes.tokenSelector} onClick={() => onTokenDropdownClick("to")} type="button">
             <Typography className={classes.tokenSelectorSymbol} type="h2">
               {toSymbol}

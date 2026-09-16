@@ -18,6 +18,7 @@ type Env = {
   VITE_ETHEREUM_PROOF_OF_EFFICIENCY_CONTRACT_ADDRESS: string;
   VITE_ETHEREUM_ROLLUP_MANAGER_ADDRESS: string;
   VITE_ETHEREUM_RPC_URL: string;
+  VITE_ETHEREUM_WALLET_RPC_URL?: string;
   VITE_FAVICON_PATH?: string;
   VITE_FIAT_EXCHANGE_RATES_API_KEY?: string;
   VITE_FIAT_EXCHANGE_RATES_API_URL?: string;
@@ -35,6 +36,7 @@ type Env = {
   VITE_POLYGON_ZK_EVM_EXPLORER_URL: string;
   VITE_POLYGON_ZK_EVM_NETWORK_ID: string;
   VITE_POLYGON_ZK_EVM_RPC_URL: string;
+  VITE_POLYGON_ZK_EVM_WALLET_RPC_URL?: string;
   VITE_REPORT_FORM_ERROR_ENTRY?: string;
   VITE_REPORT_FORM_PLATFORM_ENTRY?: string;
   VITE_REPORT_FORM_URL?: string;
@@ -175,6 +177,7 @@ const envToDomain = ({
   VITE_ETHEREUM_PROOF_OF_EFFICIENCY_CONTRACT_ADDRESS,
   VITE_ETHEREUM_ROLLUP_MANAGER_ADDRESS,
   VITE_ETHEREUM_RPC_URL,
+  VITE_ETHEREUM_WALLET_RPC_URL,
   VITE_FAVICON_PATH,
   VITE_FIAT_EXCHANGE_RATES_API_KEY,
   VITE_FIAT_EXCHANGE_RATES_API_URL,
@@ -192,6 +195,7 @@ const envToDomain = ({
   VITE_POLYGON_ZK_EVM_EXPLORER_URL,
   VITE_POLYGON_ZK_EVM_NETWORK_ID,
   VITE_POLYGON_ZK_EVM_RPC_URL,
+  VITE_POLYGON_ZK_EVM_WALLET_RPC_URL,
   VITE_REPORT_FORM_ERROR_ENTRY,
   VITE_REPORT_FORM_PLATFORM_ENTRY,
   VITE_REPORT_FORM_URL,
@@ -234,6 +238,16 @@ const envToDomain = ({
       poeContractAddress: VITE_ETHEREUM_PROOF_OF_EFFICIENCY_CONTRACT_ADDRESS,
       rollupManagerAddress: VITE_ETHEREUM_ROLLUP_MANAGER_ADDRESS,
       rpcUrl: VITE_ETHEREUM_RPC_URL,
+      // Same as L2: app RPC may be an Origin-gated proxy; wallets need a public URL.
+      // Fall back to public Sepolia when unset and chain is Sepolia (handled in getChains
+      // only if we pass an explicit URL here for local/proxy setups).
+      walletRpcUrl:
+        VITE_ETHEREUM_WALLET_RPC_URL ||
+        (VITE_ETHEREUM_RPC_URL.includes("localhost") ||
+        VITE_ETHEREUM_RPC_URL.includes("127.0.0.1") ||
+        /\/l1rpc\/?$/i.test(VITE_ETHEREUM_RPC_URL)
+          ? "https://ethereum-sepolia-rpc.publicnode.com"
+          : undefined),
     },
     polygonZkEVM: {
       bridgeContractAddress: VITE_POLYGON_ZK_EVM_BRIDGE_CONTRACT_ADDRESS,
@@ -241,6 +255,18 @@ const envToDomain = ({
       iconUrl: iconPath,
       networkId: polygonZkEVMNetworkId,
       rpcUrl: VITE_POLYGON_ZK_EVM_RPC_URL,
+      // Wallet-facing URL for wallet_addEthereumChain. Deliberately separate
+      // from rpcUrl above: rpcUrl may be an Origin-gated same-origin proxy that
+      // works for this page and 403s for a wallet. Empty string is treated as
+      // unset because the deployment substitutes placeholders with "" when the
+      // env var is absent, so `?? ` alone would not fall back.
+      walletRpcUrl:
+        VITE_POLYGON_ZK_EVM_WALLET_RPC_URL ||
+        (VITE_POLYGON_ZK_EVM_RPC_URL.includes("localhost") ||
+        VITE_POLYGON_ZK_EVM_RPC_URL.includes("127.0.0.1") ||
+        /\/l2rpc\/?$/i.test(VITE_POLYGON_ZK_EVM_RPC_URL)
+          ? "https://rpc.testnet.tajirchain.com"
+          : undefined),
     },
   }).then((chains) => {
     const ethereumChain = chains.find((chain) => chain.key === "ethereum");
@@ -297,6 +323,9 @@ const envParser = StrictSchema<Env, domain.Env>()(
       VITE_ETHEREUM_PROOF_OF_EFFICIENCY_CONTRACT_ADDRESS: z.string().length(42),
       VITE_ETHEREUM_ROLLUP_MANAGER_ADDRESS: z.string().length(42),
       VITE_ETHEREUM_RPC_URL: z.string().url(),
+      // Optional: public L1 RPC for wallets / AppKit (not Origin-gated proxy).
+      // Empty string is treated as unset — same as VITE_POLYGON_ZK_EVM_WALLET_RPC_URL.
+      VITE_ETHEREUM_WALLET_RPC_URL: z.string().optional(),
       VITE_FAVICON_PATH: z.string().optional(),
       VITE_FIAT_EXCHANGE_RATES_API_KEY: z.string().optional(),
       VITE_FIAT_EXCHANGE_RATES_API_URL: z.string().url().optional(),
@@ -314,6 +343,11 @@ const envParser = StrictSchema<Env, domain.Env>()(
       VITE_POLYGON_ZK_EVM_EXPLORER_URL: z.string().url(),
       VITE_POLYGON_ZK_EVM_NETWORK_ID: z.string(),
       VITE_POLYGON_ZK_EVM_RPC_URL: z.string().url(),
+      // Optional, and NOT .url(): when the env var is not set the deployment
+      // substitutes the build placeholder with an empty string, which .url()
+      // would reject and take the whole app down. Empty means "fall back to
+      // VITE_POLYGON_ZK_EVM_RPC_URL".
+      VITE_POLYGON_ZK_EVM_WALLET_RPC_URL: z.string().optional(),
       VITE_REPORT_FORM_ERROR_ENTRY: z.string().optional(),
       VITE_REPORT_FORM_PLATFORM_ENTRY: z.string().optional(),
       VITE_REPORT_FORM_URL: z.string().optional(),

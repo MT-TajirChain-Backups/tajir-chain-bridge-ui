@@ -74,15 +74,15 @@ export const useHeaderRedesignStyles = createUseStyles((theme: Theme) => ({
     marginTop: theme.spacing(1.25),
   },
   centerBlock: {
+    flex: 2,
     justifyContent: "center",
     textAlign: "center",
   },
   header: {
-    // alignItems: "center",
     display: "flex",
     flexDirection: "column",
     justifyContent: "center",
-    // margin: [theme.spacing(1.5), "auto", 0],
+    margin: [theme.spacing(4), "auto", theme.spacing(2)],
     position: "relative",
     width: "100%",
     [theme.breakpoints.upSm]: {

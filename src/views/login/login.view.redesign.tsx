@@ -5,9 +5,10 @@ import { NetworkBoxRedesign } from "../shared/network-box/network-box.view.redes
 import { WalletListRedesign } from "./components/wallet-list/wallet-list.view.redesign";
 import { routerStateParser } from "src/adapters/browser";
 import { getPolicyCheck, setPolicyCheck } from "src/adapters/storage";
+import WarningIcon from "src/assets/icons/warning.svg?react";
 import { useEnvContext } from "src/contexts/env.context";
 import { useProvidersContext } from "src/contexts/providers.context";
-import { EthereumChainId, PolicyCheck, WalletName } from "src/domain";
+import { EthereumChainId, PolicyCheck } from "src/domain";
 import { routes } from "src/routes";
 import { getDeploymentName } from "src/utils/labels";
 import { useLoginRedesignStyles } from "src/views/login/login.styles";
@@ -18,7 +19,6 @@ import { Typography } from "src/views/shared/typography/typography.view";
 
 export const LoginRedesign: FC = () => {
   const classes = useLoginRedesignStyles();
-  const [selectedWallet, setSelectedWallet] = useState<WalletName>();
   const [showPolicyModal, setShowPolicyModal] = useState(false);
   const navigate = useNavigate();
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -28,19 +28,21 @@ export const LoginRedesign: FC = () => {
 
   const onConnectProvider = () => {
     setPolicyCheck();
-    if (selectedWallet) {
-      connectProvider(selectedWallet).catch((error) => {
-        console.error(error);
-      });
-      setShowPolicyModal(false);
-    }
+    void connectProvider().catch((error) => {
+      console.error(error);
+    });
+    setShowPolicyModal(false);
   };
 
-  const onCheckAndConnectProvider = (walletName: WalletName) => {
-    setSelectedWallet(walletName);
+  const onCheckAndConnectProvider = () => {
+    if (connectedProvider.status === "reloading") {
+      return;
+    }
     const checked = getPolicyCheck();
     if (checked === PolicyCheck.Checked) {
-      void connectProvider(walletName);
+      void connectProvider().catch((error) => {
+        console.error(error);
+      });
     } else {
       setShowPolicyModal(true);
     }
@@ -62,7 +64,6 @@ export const LoginRedesign: FC = () => {
     return null;
   }
 
-  // const name = env.networkName;
   const ethereumChain = env.chains[0];
   const deploymentName = getDeploymentName(ethereumChain);
 
@@ -70,17 +71,14 @@ export const LoginRedesign: FC = () => {
     <div className={classes.login}>
       <div className={classes.contentWrapper}>
         <div className={classes.networkTopBox}>
-          {/* <Typography className={classes.appName} type="body1">
-            <ArrowDoubleIcon className={classes.appNameIcon} /> {appName}
-          </Typography> */}
-          {/* <Typography className={classes.networkName} type="body1">
-            {name ? name : env.chains[1].name}
-          </Typography> */}
         </div>
 
         <div className={classes.cardWrap}>
           <WalletListRedesign onSelectWallet={onCheckAndConnectProvider} />
-          {connectedProvider.status === "failed" && (
+          {connectedProvider.status === "reloading" && (
+            <InfoBanner message="Check your wallet — approve Add Network Requests" />
+          )}
+          {connectedProvider.status === "failed" && connectedProvider.error !== "Disconnected" && (
             <ErrorMessage error={connectedProvider.error} />
           )}
         </div>
@@ -88,23 +86,25 @@ export const LoginRedesign: FC = () => {
           <NetworkBoxRedesign />
         </div>
         {ethereumChain.chainId !== EthereumChainId.MAINNET && (
-          <InfoBanner message="Connect with tajir testnet environment" />
-          // <InfoBanner message={`Connect with ${ethereumChain.name} environment`} />
+          <InfoBanner message={`Connect with ${import.meta.env.VITE_POLYGON_ZK_EVM_NETWORK_NAME ? String(import.meta.env.VITE_POLYGON_ZK_EVM_NETWORK_NAME) : 'TajirChain'} environment`} />
         )}
       </div>
 
       {showPolicyModal && (
         <ConfirmationModal
           message={
-            <Typography type="body1">
-              DISCLAIMER: This version of the Tajir Bridge will require frequent maintenance and
-              may be restarted if upgrades are needed.
-            </Typography>
+            <div className={classes.policyMessage}>
+              <WarningIcon aria-hidden className={classes.policyMessageIcon} />
+              <Typography className={classes.policyMessageText} type="body2">
+                This version of the Tajir Bridge will require frequent maintenance and may be
+                restarted if upgrades are needed.
+              </Typography>
+            </div>
           }
           onClose={() => setShowPolicyModal(false)}
           onConfirm={onConnectProvider}
           showCancelButton={false}
-          title={`Welcome to the Tajir Bridge ${deploymentName || ""}`}
+          title={`Welcome to the Tajir Bridge${deploymentName ? ` ${deploymentName}` : ""}`}
         />
       )}
     </div>

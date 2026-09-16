@@ -59,6 +59,12 @@ export const useActivityStyles = createUseStyles((theme: Theme) => ({
   filterNumberBoxSelected: {
     backgroundColor: theme.palette.grey.light,
   },
+  loadMoreWrapper: {
+    display: "flex",
+    justifyContent: "center",
+    marginTop: theme.spacing(3),
+    paddingBottom: theme.spacing(2),
+  },
   stickyContent: {
     background: theme.palette.grey.light,
     position: "sticky",
@@ -166,6 +172,12 @@ export const useActivityRedesignStyles = createUseStyles((theme: Theme) => ({
   },
   loaderWrapper: {
     flex: 0,
+  },
+  loadMoreWrapper: {
+    display: "flex",
+    justifyContent: "center",
+    marginTop: theme.spacing(3),
+    paddingBottom: theme.spacing(2),
   },
 
   scrollArea: {

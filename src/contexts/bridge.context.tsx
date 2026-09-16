@@ -15,6 +15,7 @@ import {
   BRIDGE_CALL_PERMIT_GAS_LIMIT_INCREASE,
   FIAT_DISPLAY_PRECISION,
   GAS_PRICE_INCREASE_PERCENTAGE,
+  PENDING_TX_CANCEL_GRACE_PERIOD,
   PENDING_TX_TIMEOUT,
 } from "src/constants";
 import { useEnvContext } from "src/contexts/env.context";
@@ -105,6 +106,7 @@ type BridgeContext = {
   fetchBridge: (params: FetchBridgeParams) => Promise<Bridge>;
   fetchBridges: (params: FetchBridgesParams) => Promise<{
     bridges: Bridge[];
+    fetchedCount: number;
     total: number;
   }>;
   getPendingBridges: (bridges?: Bridge[]) => Promise<PendingBridge[]>;
@@ -287,6 +289,7 @@ const BridgeProvider: FC<PropsWithChildren> = (props) => {
       offset,
     }: GetBridgesParams): Promise<{
       bridges: Bridge[];
+      fetchedCount: number;
       total: number;
     }> => {
       const apiUrl = env.bridgeApiUrl;
@@ -364,7 +367,10 @@ const BridgeProvider: FC<PropsWithChildren> = (props) => {
         Promise.resolve([])
       );
 
-      const total: number = deposits.length;
+      // fetchedCount = raw items returned by the API before client-side filtering
+      const fetchedCount: number = apiDeposits.length;
+      // total = the backend's real total_cnt across all pages
+      const total: number = result.total;
 
       const tokenPrices: TokenPrices = env.fiatExchangeRates.areEnabled
         ? await deposits.reduce(
@@ -485,6 +491,7 @@ const BridgeProvider: FC<PropsWithChildren> = (props) => {
 
       return {
         bridges,
+        fetchedCount,
         total,
       };
     },
@@ -501,6 +508,7 @@ const BridgeProvider: FC<PropsWithChildren> = (props) => {
       quantity,
     }: RefreshBridgesParams): Promise<{
       bridges: Bridge[];
+      fetchedCount: number;
       total: number;
     }> => {
       const completePages = Math.floor(quantity / REFRESH_PAGE_SIZE);
@@ -527,10 +535,14 @@ const BridgeProvider: FC<PropsWithChildren> = (props) => {
               });
             })
         )
-      ).reduce((acc, curr) => ({ bridges: [...acc.bridges, ...curr.bridges], total: curr.total }), {
-        bridges: [],
-        total: 0,
-      });
+      ).reduce(
+        (acc, curr) => ({
+          bridges: [...acc.bridges, ...curr.bridges],
+          fetchedCount: acc.fetchedCount + curr.fetchedCount,
+          total: curr.total,
+        }),
+        { bridges: [], fetchedCount: 0, total: 0 }
+      );
     },
     [getBridges]
   );
@@ -540,6 +552,7 @@ const BridgeProvider: FC<PropsWithChildren> = (props) => {
       params: FetchBridgesParams
     ): Promise<{
       bridges: Bridge[];
+      fetchedCount: number;
       total: number;
     }> => {
       if (params.type === "load") {
@@ -606,7 +619,12 @@ const BridgeProvider: FC<PropsWithChildren> = (props) => {
             pendingTx.type === "deposit" ? pendingTx.from.provider : pendingTx.to.provider;
           const tx = await provider.getTransaction(txHash);
 
-          if (isTxCanceled(tx)) {
+          // RPC often returns null for a few seconds after submit (mempool lag).
+          // Only treat null as canceled after the grace period so recent txs stay visible.
+          if (
+            isTxCanceled(tx) &&
+            Date.now() > pendingTx.timestamp + PENDING_TX_CANCEL_GRACE_PERIOD
+          ) {
             return storage.removeAccountPendingTx(account, env, pendingTx.depositTxHash);
           }
 
@@ -727,7 +745,7 @@ const BridgeProvider: FC<PropsWithChildren> = (props) => {
               })
           : BigNumber.from(300000);
 
-      const { gasPrice, maxFeePerGas } = await from.provider.getFeeData();
+      const { gasPrice, maxFeePerGas, maxPriorityFeePerGas } = await from.provider.getFeeData();
 
       // cdk-erigon (L2) does not support EIP-1559 dynamic fee transactions
       // even though it returns baseFeePerGas in block headers (part of zkEVM
@@ -735,7 +753,7 @@ const BridgeProvider: FC<PropsWithChildren> = (props) => {
       const isL2 = from.key === "polygon-zkevm";
 
       if (maxFeePerGas && !isL2) {
-        return { data: { gasLimit, maxFeePerGas }, type: "eip-1559" };
+        return { data: { gasLimit, maxFeePerGas, maxPriorityFeePerGas: maxPriorityFeePerGas ?? undefined }, type: "eip-1559" };
       } else {
         const legacyGasPrice = gasPrice || (await from.provider.getGasPrice());
         const gasPriceIncrease = legacyGasPrice

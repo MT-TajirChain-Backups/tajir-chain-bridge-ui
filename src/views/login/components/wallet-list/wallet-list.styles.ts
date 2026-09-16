@@ -54,6 +54,18 @@ export const useWalletListRedesignStyles = createUseStyles((theme: Theme) => ({
     
   },
   
+  buttonTextDesktop: {
+    display: "inline",
+    [theme.breakpoints.downM]: {
+      display: "none",
+    },
+  },
+  buttonTextMobile: {
+    display: "none",
+    [theme.breakpoints.downM]: {
+      display: "inline",
+    },
+  },
   buttonWalletTitle: {
     alignItems: "center",
     display: "flex",
@@ -73,10 +85,41 @@ export const useWalletListRedesignStyles = createUseStyles((theme: Theme) => ({
     gap: theme.spacing(1),
     padding: theme.spacing(2),
   },
-    smallTitle: {
+    iconStack: {
+    alignItems: "center",
+    display: "flex",
+    marginRight: theme.spacing(1.5),
+    [theme.breakpoints.downM]: {
+      marginRight: theme.spacing(1),
+    },
+  },
+  smallTitle: {
     color: "#78798d",
     fontSize: 12,
     fontWeight: 400,
+  },
+  stackedIcon: {
+    "&:first-child": {
+      marginLeft: 0,
+      zIndex: 1,
+    },
+    "&:nth-child(2)": {
+      zIndex: 2,
+    },
+    "&:nth-child(3)": {
+      transform: "scale(0.85)",
+      zIndex: 3,
+    },
+    borderRadius: "50%",
+    height: 32,
+    marginLeft: -16,
+    objectFit: "contain",
+    width: 32,
+    [theme.breakpoints.downM]: {
+      height: 24,
+      marginLeft: -12,
+      width: 24,
+    },
   },
   wallet: {
     alignItems: "center",
@@ -84,12 +127,6 @@ export const useWalletListRedesignStyles = createUseStyles((theme: Theme) => ({
     display: "flex",
     justifyContent: "space-between",
     transition: theme.hoverTransition,
-  },
-  walletIcon: {
-    marginRight: theme.spacing(2),
-    [theme.breakpoints.downM]: {
-      marginRight: theme.spacing(1),
-    },
   },
   walletInfo: {
     flex: 1,

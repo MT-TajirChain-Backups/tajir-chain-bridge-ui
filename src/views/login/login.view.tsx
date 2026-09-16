@@ -4,9 +4,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { routerStateParser } from "src/adapters/browser";
 import { getPolicyCheck, setPolicyCheck } from "src/adapters/storage";
 import Logo from "src/assets/icons/chains/tajir.svg?react";
+import WarningIcon from "src/assets/icons/warning.svg?react";
 import { useEnvContext } from "src/contexts/env.context";
 import { useProvidersContext } from "src/contexts/providers.context";
-import { EthereumChainId, PolicyCheck, WalletName } from "src/domain";
+import { EthereumChainId, PolicyCheck } from "src/domain";
 import { routes } from "src/routes";
 import { getDeploymentName } from "src/utils/labels";
 import { WalletList } from "src/views/login/components/wallet-list/wallet-list.view";
@@ -20,7 +21,6 @@ import { Typography } from "src/views/shared/typography/typography.view";
 
 export const Login: FC = () => {
   const classes = useLoginStyles();
-  const [selectedWallet, setSelectedWallet] = useState<WalletName>();
   const [showPolicyModal, setShowPolicyModal] = useState(false);
   const navigate = useNavigate();
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -30,16 +30,21 @@ export const Login: FC = () => {
 
   const onConnectProvider = () => {
     setPolicyCheck();
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    selectedWallet && connectProvider(selectedWallet);
+    void connectProvider().catch((error) => {
+      console.error(error);
+    });
     setShowPolicyModal(false);
   };
 
-  const onCheckAndConnectProvider = (walletName: WalletName) => {
-    setSelectedWallet(walletName);
+  const onCheckAndConnectProvider = () => {
+    if (connectedProvider.status === "reloading") {
+      return;
+    }
     const checked = getPolicyCheck();
     if (checked === PolicyCheck.Checked) {
-      void connectProvider(walletName);
+      void connectProvider().catch((error) => {
+        console.error(error);
+      });
     } else {
       setShowPolicyModal(true);
     }
@@ -87,6 +92,9 @@ export const Login: FC = () => {
               <WalletList onSelectWallet={onCheckAndConnectProvider} />
             </>
           </Card>
+          {connectedProvider.status === "reloading" && (
+            <InfoBanner message="Check your wallet — approve Add Network Requests" />
+          )}
           {connectedProvider.status === "failed" && (
             <ErrorMessage error={connectedProvider.error} />
           )}
@@ -95,15 +103,18 @@ export const Login: FC = () => {
       {showPolicyModal && (
         <ConfirmationModal
           message={
-            <Typography type="body1">
-              DISCLAIMER: This version of the Polygon zkEVM will require frequent maintenance and
-              may be restarted if upgrades are needed.
-            </Typography>
+            <div className={classes.policyMessage}>
+              <WarningIcon aria-hidden className={classes.policyMessageIcon} />
+              <Typography className={classes.policyMessageText} type="body2">
+                This version of the Tajir Bridge will require frequent maintenance and may be
+                restarted if upgrades are needed.
+              </Typography>
+            </div>
           }
           onClose={() => setShowPolicyModal(false)}
           onConfirm={onConnectProvider}
           showCancelButton={false}
-          title={`Welcome to the Polygon zkEVM ${deploymentName || ""}`}
+          title={`Welcome to the Tajir Bridge${deploymentName ? ` ${deploymentName}` : ""}`}
         />
       )}
     </div>

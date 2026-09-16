@@ -243,8 +243,13 @@ export const BridgeForm: FC<BridgeFormProps> = ({ account, formData, onResetForm
   useEffect(() => {
     // Load the default values after the network is changed
     if (env && connectedProvider.status === "successful" && formData === undefined) {
-      const from = env.chains.find((chain) => chain.chainId === connectedProvider.data.chainId);
-      const to = env.chains.find((chain) => chain.chainId !== connectedProvider.data.chainId);
+      let from = env.chains.find((chain) => chain.chainId === connectedProvider.data.chainId);
+      let to = env.chains.find((chain) => chain.chainId !== connectedProvider.data.chainId);
+
+      if (!from) {
+        from = env.chains[0];
+        to = env.chains.find((chain) => chain.chainId !== from?.chainId) || env.chains[1];
+      }
 
       if (from && to) {
         setSelectedChains({ from, to });
