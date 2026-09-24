@@ -2,10 +2,7 @@ name: Security Build
 on:
   push:
     branches:
-      - main
-      - develop
-      - staging
-      - devnet
+      - none
   workflow_dispatch: {}
   pull_request:
     types: [opened, synchronize, reopened]
