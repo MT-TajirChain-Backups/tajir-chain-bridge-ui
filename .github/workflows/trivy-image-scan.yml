@@ -33,11 +33,6 @@ jobs:
           echo "tag=${DOCKERHUB_IMAGE}:scan-${SOURCE_SHA}" >> "$GITHUB_OUTPUT"
           echo "Staging image as: ${DOCKERHUB_IMAGE}:scan-${SOURCE_SHA}"
 
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache || true
-          docker system prune -af || true
-
       - name: Build image
         # --no-cache ensures prior vulnerable node_modules layers cannot survive
         run: docker build --no-cache -t "${{ steps.meta.outputs.tag }}" .
