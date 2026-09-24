@@ -2,10 +2,9 @@ name: Require Version Label
 
 on:
   pull_request:
-    types: [opened, labeled, unlabeled, synchronize]
+    types: [ labeled, unlabeled, synchronize]  
     branches:
       - devnet
-
 jobs:
   check-label:
     name: Check version label
