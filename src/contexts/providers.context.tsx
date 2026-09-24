@@ -43,10 +43,16 @@ import {
 import { useEnvContext } from "src/contexts/env.context";
 import { AsyncTask, Chain, ConnectedProvider } from "src/domain";
 import { getChecksumAddress } from "src/utils/addresses";
+import { isMobileDevice } from "src/utils/mobile";
 import {
   isAsyncTaskDataAvailable,
   isMetaMaskUserRejectedRequestError,
 } from "src/utils/types";
+
+/** Wait after the tab is foregrounded before WC add/switch (mobile deep-link settle). */
+const MOBILE_NETWORK_ENSURE_DELAY_MS = 600;
+/** If MetaMask never answers Add Network over WC, unblock Continue / retry (mobile only). */
+const MOBILE_NETWORK_ENSURE_TIMEOUT_MS = 45_000;
 
 // AppKit Initialization
 const projectId = import.meta.env.VITE_REOWN_PROJECT_ID
@@ -258,19 +264,23 @@ const sameWalletIds = (
 /**
  * Default connect-modal order (same wallets/logos, groups only):
  * MetaMask, Tajir Wallet, Trust Wallet, Base, Coinbase, WalletConnect.
- * Tajir is spliced into featured when the extension is not installed.
- * When it is installed, only the EIP-6963 row is shown (installed tag).
+ * Tajir is desktop-only for now (no mobile-first support): spliced into featured
+ * when the extension is not installed; when installed, only the EIP-6963 row.
  */
 const syncConnectModalOrder = (): void => {
-  const tajirInstalled = allowInstalledTajirConnector();
+  // Mobile: omit Tajir entirely. Desktop: keep installed (EIP-6963) or featured fallback.
+  const showTajir = !isMobileDevice();
+  const tajirInstalled = showTajir ? allowInstalledTajirConnector() : false;
   const explorer = ApiController.state.allFeatured;
   const metamask = explorer.find((wallet) => wallet.id === METAMASK_WALLET_ID);
   const trust = explorer.find((wallet) => wallet.id === TRUST_WALLET_ID);
   const coinbase = explorer.find((wallet) => wallet.id === COINBASE_WALLET_ID);
 
-  const nextFeatured = [metamask, tajirInstalled ? undefined : getTajirCustomWallet(), trust].filter(
-    (wallet): wallet is NonNullable<typeof wallet> => Boolean(wallet)
-  );
+  const nextFeatured = [
+    metamask,
+    showTajir && !tajirInstalled ? getTajirCustomWallet() : undefined,
+    trust,
+  ].filter((wallet): wallet is NonNullable<typeof wallet> => Boolean(wallet));
 
   if (!sameWalletIds(ApiController.state.featured, nextFeatured)) {
     ApiController.state.featured = nextFeatured;
@@ -522,6 +532,12 @@ const ProvidersProvider: FC<PropsWithChildren> = (props) => {
   const networkEnsureAttemptedRef = useRef(false);
   // User rejected all Add Network prompts — don't auto-retry from AppKit "connected".
   const networkSetupRejectedRef = useRef(false);
+  // Mobile only: login reached successful — restore after AppKit reconnect blips.
+  const mobileLoginCompletedRef = useRef(false);
+  // Mobile only: generation so timeout / Continue can supersede an in-flight ensure.
+  const mobileEnsureGenerationRef = useRef(0);
+  // Mobile only: user tapped Continue / Add network — stop auto-ensure from finishing login.
+  const mobileManualNetworkPreferredRef = useRef(false);
 
   const getAppKitNetwork = useCallback((id: number) => {
     if (id === ethereumChainId) {
@@ -591,6 +607,15 @@ const ProvidersProvider: FC<PropsWithChildren> = (props) => {
         setConnectedProvider((current) => {
           // Already connected / mid network-setup — only refresh account/chain data.
           if (current.status === "successful" || current.status === "reloading") {
+            // Mobile: syncAppKitChain often causes a reconnect blip that demotes
+            // successful → reloading. Desktop keeps current.status unchanged.
+            if (
+              isMobileDevice() &&
+              mobileLoginCompletedRef.current &&
+              current.status === "reloading"
+            ) {
+              return { data: nextData, status: "successful" };
+            }
             return { data: nextData, status: current.status };
           }
           // First session: close the wallet modal and stay on login while we prompt
@@ -632,6 +657,8 @@ const ProvidersProvider: FC<PropsWithChildren> = (props) => {
       if (isSwitchingNetworkRef.current) {
         return;
       }
+      mobileLoginCompletedRef.current = false;
+      mobileManualNetworkPreferredRef.current = false;
       setConnectedProvider({ error: "Disconnected", status: "failed" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -681,6 +708,9 @@ const ProvidersProvider: FC<PropsWithChildren> = (props) => {
     isOpeningModalRef.current = true;
     try {
       networkSetupRejectedRef.current = false;
+      mobileLoginCompletedRef.current = false;
+      mobileManualNetworkPreferredRef.current = false;
+      mobileEnsureGenerationRef.current += 1;
 
       try {
         await close();
@@ -860,19 +890,76 @@ const ProvidersProvider: FC<PropsWithChildren> = (props) => {
     [beginNetworkSwitch, endNetworkSwitch, syncAppKitChain]
   );
 
+  const markLoginSuccessful = useCallback(
+    async (session: ConnectedProvider, preferredChainId?: number) => {
+      let finalChainId = preferredChainId ?? session.chainId;
+      try {
+        finalChainId = (await session.provider.getNetwork()).chainId;
+      } catch {
+        // keep preferred / session chain
+      }
+      try {
+        await syncAppKitChain(finalChainId);
+      } catch {
+        // AppKit sync is best-effort
+      }
+      networkSetupRejectedRef.current = false;
+      networkEnsureAttemptedRef.current = true;
+      if (isMobileDevice()) {
+        mobileLoginCompletedRef.current = true;
+        mobileManualNetworkPreferredRef.current = false;
+      }
+      setConnectedProvider({
+        data: {
+          account: session.account,
+          chainId: finalChainId,
+          provider: session.provider,
+        },
+        status: "successful",
+      });
+    },
+    [syncAppKitChain]
+  );
+
   const addNetwork = useCallback(
     async (chain: Chain): Promise<void> => {
       if (!isAsyncTaskDataAvailable(connectedProvider)) {
         return Promise.reject(new Error("No provider is available"));
       }
-      await ensureChainInWallet(chain, connectedProvider.data.provider);
+      const session = connectedProvider.data;
+      const mobileLoginSetup =
+        isMobileDevice() && connectedProvider.status === "reloading";
+
+      // Mobile: prefer manual Add / Continue over an in-flight auto ensure.
+      if (mobileLoginSetup) {
+        mobileManualNetworkPreferredRef.current = true;
+        mobileEnsureGenerationRef.current += 1;
+        networkEnsureAttemptedRef.current = true;
+      }
+
+      try {
+        await ensureChainInWallet(chain, session.provider);
+
+        // Mobile WC: auto ensure often fails after deep-link return. A successful
+        // manual Add Network on the login screen must unlock home without a refresh.
+        if (mobileLoginSetup) {
+          await markLoginSuccessful(session, chain.chainId);
+        }
+      } catch (error) {
+        if (mobileLoginSetup) {
+          mobileManualNetworkPreferredRef.current = false;
+          networkEnsureAttemptedRef.current = false;
+        }
+        throw error;
+      }
     },
-    [connectedProvider, ensureChainInWallet]
+    [connectedProvider, ensureChainInWallet, markLoginSuccessful]
   );
 
   // After connect: prompt add/switch for both bridge networks. Stay on login
-  // until done. Require at least one network accepted — rejecting both stays
-  // on login with an error instead of advancing to /home.
+  // until done. Desktop: rejecting both stays on login with an error.
+  // Mobile: defer until the tab is visible, retry on return from the wallet,
+  // timeout hung WC requests, and do not hard-lock — NetworkBox can finish login.
   useEffect(() => {
     if (connectedProvider.status === "failed") {
       networkEnsureAttemptedRef.current = false;
@@ -881,31 +968,85 @@ const ProvidersProvider: FC<PropsWithChildren> = (props) => {
     if (connectedProvider.status !== "reloading" || !env) {
       return;
     }
-    if (networkEnsureAttemptedRef.current) {
-      return;
-    }
-    networkEnsureAttemptedRef.current = true;
 
     const session = connectedProvider.data;
+    const mobile = isMobileDevice();
 
-    void (async () => {
-      let ensuredCount = 0;
+    const runEnsure = async () => {
+      if (networkEnsureAttemptedRef.current) {
+        return;
+      }
+      if (mobile && typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
+      if (mobile && mobileManualNetworkPreferredRef.current) {
+        return;
+      }
+      networkEnsureAttemptedRef.current = true;
+      const generation = mobile ? ++mobileEnsureGenerationRef.current : 0;
 
-      for (const chain of env.chains) {
-        try {
-          await ensureChainInWallet(chain, session.provider);
-          try {
-            await syncAppKitChain(chain.chainId);
-          } catch {
-            // AppKit sync is best-effort
+      const ensureChains = async (): Promise<number> => {
+        let ensuredCount = 0;
+        for (const chain of env.chains) {
+          if (mobile && mobileManualNetworkPreferredRef.current) {
+            break;
           }
-          ensuredCount += 1;
-        } catch {
-          // User rejected or wallet could not add/switch this chain — try the next.
+          if (mobile && generation !== mobileEnsureGenerationRef.current) {
+            break;
+          }
+          try {
+            await ensureChainInWallet(chain, session.provider);
+            try {
+              await syncAppKitChain(chain.chainId);
+            } catch {
+              // AppKit sync is best-effort
+            }
+            ensuredCount += 1;
+          } catch {
+            // User rejected or wallet could not add/switch this chain — try the next.
+          }
         }
+        return ensuredCount;
+      };
+
+      let ensuredCount = 0;
+      if (mobile) {
+        const raced = await Promise.race([
+          ensureChains().then((count) => ({ count, type: "ok" as const })),
+          settleMs(MOBILE_NETWORK_ENSURE_TIMEOUT_MS).then(() => ({
+            count: 0,
+            type: "timeout" as const,
+          })),
+        ]);
+        if (generation !== mobileEnsureGenerationRef.current) {
+          return;
+        }
+        if (mobileManualNetworkPreferredRef.current) {
+          return;
+        }
+        if (raced.type === "timeout") {
+          // Unblock Continue / visibility retry — do not hard-fail on mobile.
+          networkEnsureAttemptedRef.current = false;
+          return;
+        }
+        ensuredCount = raced.count;
+      } else {
+        ensuredCount = await ensureChains();
+      }
+
+      if (mobile && generation !== mobileEnsureGenerationRef.current) {
+        return;
+      }
+      if (mobile && mobileManualNetworkPreferredRef.current) {
+        return;
       }
 
       if (ensuredCount === 0) {
+        if (mobile) {
+          // Stay on reloading so the user can approve from MetaMask / use Add network.
+          networkEnsureAttemptedRef.current = false;
+          return;
+        }
         networkSetupRejectedRef.current = true;
         setConnectedProvider({
           error:
@@ -918,32 +1059,64 @@ const ProvidersProvider: FC<PropsWithChildren> = (props) => {
       // Land on L1 (Sepolia) when possible so the bridge home state is consistent.
       const l1 = env.chains[0];
       if (l1) {
-        try {
-          await ensureChainInWallet(l1, session.provider);
-          await syncAppKitChain(l1.chainId);
-        } catch {
-          // ignore — user may stay on the network they approved
+        // Mobile only: skip a second L1 deep-link when every chain already succeeded.
+        const skipExtraL1OnMobile = mobile && ensuredCount >= env.chains.length;
+        if (!skipExtraL1OnMobile) {
+          try {
+            if (mobile && generation !== mobileEnsureGenerationRef.current) {
+              return;
+            }
+            if (mobile && mobileManualNetworkPreferredRef.current) {
+              return;
+            }
+            await ensureChainInWallet(l1, session.provider);
+            await syncAppKitChain(l1.chainId);
+          } catch {
+            // ignore — user may stay on the network they approved
+          }
         }
       }
 
-      let finalChainId = l1?.chainId ?? session.chainId;
-      try {
-        finalChainId = (await session.provider.getNetwork()).chainId;
-      } catch {
-        // keep last known / L1 target
-      }
+      await markLoginSuccessful(session, l1?.chainId);
+    };
 
-      setConnectedProvider({
-        data: {
-          account: session.account,
-          chainId: finalChainId,
-          provider: session.provider,
-        },
-        status: "successful",
-      });
-      networkSetupRejectedRef.current = false;
-    })();
-  }, [connectedProvider, ensureChainInWallet, env, syncAppKitChain]);
+    if (!mobile) {
+      void runEnsure();
+      return;
+    }
+
+    let delayTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const schedule = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
+      if (delayTimer) {
+        clearTimeout(delayTimer);
+      }
+      delayTimer = setTimeout(() => {
+        void runEnsure();
+      }, MOBILE_NETWORK_ENSURE_DELAY_MS);
+    };
+
+    const onVisible = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        schedule();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pageshow", onVisible);
+    schedule();
+
+    return () => {
+      if (delayTimer) {
+        clearTimeout(delayTimer);
+      }
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pageshow", onVisible);
+    };
+  }, [connectedProvider, ensureChainInWallet, env, markLoginSuccessful, syncAppKitChain]);
 
   const changeNetwork = useCallback(
     async (chain: Chain) => {
