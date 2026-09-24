@@ -10,6 +10,7 @@ import { useProvidersContext } from "src/contexts/providers.context";
 import { EthereumChainId, PolicyCheck } from "src/domain";
 import { routes } from "src/routes";
 import { getDeploymentName } from "src/utils/labels";
+import { isMobileDevice } from "src/utils/mobile";
 import { WalletList } from "src/views/login/components/wallet-list/wallet-list.view";
 import { useLoginStyles } from "src/views/login/login.styles";
 import { Card } from "src/views/shared/card/card.view";
@@ -93,7 +94,13 @@ export const Login: FC = () => {
             </>
           </Card>
           {connectedProvider.status === "reloading" && (
-            <InfoBanner message="Check your wallet — approve Add Network Requests" />
+            <InfoBanner
+              message={
+                isMobileDevice()
+                  ? "Return from MetaMask, then approve Add Network — or use Add a network below"
+                  : "Check your wallet — approve Add Network Requests"
+              }
+            />
           )}
           {connectedProvider.status === "failed" && (
             <ErrorMessage error={connectedProvider.error} />
