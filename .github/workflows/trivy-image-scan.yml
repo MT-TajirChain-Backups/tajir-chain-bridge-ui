@@ -1,0 +1,200 @@
+name: Trivy Scan & Stage (DevNet PR)
+
+# Triggers ONLY on PR events to devnet. 
+# 'synchronize' and 'reopened' are included so the scan updates if the developer pushes fixes to the PR.
+# 'closed' is intentionally omitted to prevent running on merge/close.
+on:
+  pull_request:
+    branches: [devnet]
+    types: [opened, synchronize, reopened]
+
+env:
+  FAIL_ON_VULNERABILITIES: true
+  DOCKERHUB_IMAGE: tajirchain/tajir-chain-bridge
+  # Use the PR head SHA to ensure the staged image matches the exact code being reviewed
+  SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+
+permissions:
+  contents: read
+  pull-requests: write   # Needed to comment the staged image tag on the PR
+
+jobs:
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+
+      - name: Resolve image tag
+        id: meta
+        run: |
+          echo "tag=${DOCKERHUB_IMAGE}:scan-${SOURCE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Staging image as: ${DOCKERHUB_IMAGE}:scan-${SOURCE_SHA}"
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache || true
+          docker system prune -af || true
+
+      - name: Build image
+        # --no-cache ensures prior vulnerable node_modules layers cannot survive
+        run: docker build --no-cache -t "${{ steps.meta.outputs.tag }}" .
+
+      # ── IMPROVED TRIVY SCANNING (Clean JSON + Markdown Summary) ────────────
+      - name: Run Trivy vulnerability scanner (JSON)
+        id: trivy-json
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ steps.meta.outputs.tag }}'
+          format: 'json'
+          output: 'trivy-results.json'
+          severity: 'CRITICAL,HIGH'
+          timeout: '20m'
+          exit-code: '0'
+
+      - name: Run Trivy vulnerability scanner (Table)
+        id: trivy-table
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ steps.meta.outputs.tag }}'
+          format: 'table'
+          output: 'trivy-report.txt'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+          timeout: '20m'
+          skip-setup-trivy: true # Skips re-downloading since the JSON step already set it up
+
+      - name: Generate Trivy Summary
+        id: summary
+        run: |
+          echo "## Trivy HIGH/CRITICAL — ${{ github.repository }} @ \`${SOURCE_SHA::7}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ ! -f trivy-results.json ]; then
+            echo "** No scan results available — failing CLOSED.**" >> $GITHUB_STEP_SUMMARY
+            echo "total=-1" >> $GITHUB_OUTPUT   # sentinel: "-1" != "0" → gate fails below
+            exit 0
+          fi
+
+          TOTAL=$(jq '[.Results[]? | (.Vulnerabilities // []) | length] | add // 0' trivy-results.json)
+
+          echo "### Report Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | Type | Vulnerabilities |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|------|-----------------|" >> $GITHUB_STEP_SUMMARY
+
+          jq -r '.Results[]? | [.Target, .Type, ((.Vulnerabilities // []) | length)] | @tsv' trivy-results.json | \
+          while IFS=$'\t' read -r target type vuln_count; do
+            echo "| ${target} | ${type} | ${vuln_count} |" >> $GITHUB_STEP_SUMMARY
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Total Vulnerabilities Found: ${TOTAL}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$TOTAL" -gt 0 ]; then
+            echo "---" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Detailed Findings" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| CVE ID | Severity | Package | Installed | Fixed In | Title |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|----------|---------|-----------|----------|-------|" >> $GITHUB_STEP_SUMMARY
+
+            jq -r '
+              .Results[]? |
+              (.Vulnerabilities // [])[] |
+              [
+                .VulnerabilityID,
+                .Severity,
+                .PkgName,
+                .InstalledVersion,
+                (.FixedVersion // "N/A"),
+                (.Title // .Description // "No title")
+              ] |
+              @tsv
+            ' trivy-results.json | \
+            while IFS=$'\t' read -r cve severity pkg installed fixed title; do
+              title_short="${title:0:80}"
+              [ "${#title}" -gt 80 ] && title_short="${title_short}..."
+              echo "| ${cve} | **${severity}** | ${pkg} | ${installed} | ${fixed} | ${title_short} |" >> $GITHUB_STEP_SUMMARY
+            done
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "> **Tip:** Download the full \`trivy-report.txt\` artifact for complete details." >> $GITHUB_STEP_SUMMARY
+          echo "total=${TOTAL}" >> $GITHUB_OUTPUT
+
+      - name: Vulnerability Gate
+        id: gate
+        if: steps.summary.outcome == 'success'
+        run: |
+          TOTAL="${{ steps.summary.outputs.total }}"
+          if [ "${FAIL_ON_VULNERABILITIES}" = "true" ] && [ "${TOTAL}" != "0" ]; then
+            echo " FAIL_ON_VULNERABILITIES is enabled."
+            echo "   Found ${TOTAL} HIGH/CRITICAL vulnerability(s)."
+            echo "   Pipeline is BLOCKED. Fix vulnerabilities before proceeding."
+            exit 1
+          fi
+          echo " No HIGH/CRITICAL vulnerabilities found. Gate passed."
+
+      # ── NOTIFICATION & FAILURE HANDLING ─────────────────────────────────────
+      - name: Notify Slack on failure
+        if: failure()   # fires on gate failure AND build/scan infra failures
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.head_ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          curl -sS -X POST -H 'Content-type: application/json' \
+            --data "{\"text\": \"🛡️ *Trivy scan failed in ${REPO}* (PR \`${REF}\`, sha \`${SOURCE_SHA::7}\`)\n🔗 ${RUN_URL}\"}" \
+            "${SLACK_WEBHOOK_URL}" || true
+
+      - name: Fail if findings
+        if: steps.gate.outcome == 'failure'
+        run: |
+          echo "HIGH/CRITICAL vulnerabilities present — see Job Summary." >&2
+          exit 1
+
+      # ── STAGE THE SCANNED IMAGE FOR REUSE (Only if Gate Passes) ─────────────
+      - name: Login to DockerHub
+        if: steps.gate.outcome == 'success'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Push staged image
+        if: steps.gate.outcome == 'success'
+        run: |
+          docker push "${{ steps.meta.outputs.tag }}"
+          echo "Staged image: ${{ steps.meta.outputs.tag }}"
+
+      - name: Comment staged image on PR
+        if: steps.gate.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          MODE="HIGH/CRITICAL clean"
+          [ "${FAIL_ON_VULNERABILITIES}" != "true" ] && MODE="scan complete (advisory — findings not blocking)"
+          BODY="🐳 Image built & scanned (${MODE}) and staged as \`${{ steps.meta.outputs.tag }}\`. It will be promoted as-is on merge — no rebuild."
+          ID=$(gh api --paginate "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+            --jq '.[] | select(.body | startswith("🐳 Image built")) | .id' | tail -1)
+          if [ -n "$ID" ]; then
+            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$ID" -f body="$BODY"
+          else
+            gh pr comment "${{ github.event.pull_request.number }}" --body "$BODY"
+          fi
+
+      - name: Upload Trivy reports to artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-scan-reports
+          path: |
+            trivy-results.json
+            trivy-report.txt
+          retention-days: 30
