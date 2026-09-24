@@ -1,4 +1,13 @@
-name: Tag & Docker Build & Push
+name: Tag & Docker Promote
+
+# NO BUILD happens here anymore. The image for this merge was already built and
+# scanned by trivy-image-scan.yml and staged on DockerHub.
+# This workflow resolves the ORIGINAL commit SHA that was scanned, pulls that
+# exact image, and re-tags it. Layer blobs already exist on DockerHub, so the
+# push is a fast metadata-only operation.
+# Fallback: if the staged image is missing, it falls back to a full local build.
+#
+# Requires repo secrets: SLACK_WEBHOOK_URL, DOCKER_USERNAME, DOCKER_PASSWORD.
 
 on:
   pull_request:
@@ -10,15 +19,17 @@ on:
 
 env:
   DOCKERHUB_IMAGE: tajirchain/tajir-chain-bridge
+  # Default fallback: head.sha for PR merges, github.sha for direct pushes
+  SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 permissions:
-  contents: write 
+  contents: write
 
 jobs:
-  tag-and-publish:  
-    name: Tag, Build & Push
+  tag-and-publish:
+    name: Tag & Promote
     runs-on: ubuntu-latest
     if: github.event.pull_request.merged == true
-
     steps:
       - name: Checkout (full history + tags)
         uses: actions/checkout@v4
@@ -31,7 +42,7 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      # ── Step 1: Compute next version ────────────────────────────────────────
+      # ── Step 1: Compute next version & resolve original scanned SHA ────────
       - name: Compute next version
         id: version
         shell: bash
@@ -126,6 +137,27 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
 
+          # ── Resolve the ORIGINAL commit SHA that was scanned ────────────────
+          RESOLVED_SOURCE_SHA="${SOURCE_SHA}"   # default: PR head SHA
+
+          if [ "$BUMP" = "promotion" ]; then
+            if [ "$BRANCH" = "testnet" ]; then
+              PROMOTE_TAG="devnet-v${DEVNET_BASE}"
+            else
+              PROMOTE_TAG="testnet-v${TESTNET_BASE}"
+            fi
+
+            TAG_SHA=$(git rev-parse -q --verify "${PROMOTE_TAG}^{commit}" 2>/dev/null || echo "")
+            if [ -n "$TAG_SHA" ]; then
+              echo "✅ Promotion: resolving scanned SHA from tag '${PROMOTE_TAG}' → ${TAG_SHA}"
+              RESOLVED_SOURCE_SHA="$TAG_SHA"
+            else
+              echo "::warning::Tag '${PROMOTE_TAG}' not found in git history — falling back to PR head SHA."
+            fi
+          else
+            echo "✅ Standard bump — using PR head SHA: ${RESOLVED_SOURCE_SHA}"
+          fi
+
           # Compute DockerHub image tags
           IMAGE_TAGS="${IMAGE}:${NEW_TAG}"
           if [[ "$NEW_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -134,11 +166,13 @@ jobs:
 
           echo "New tag    : $NEW_TAG  (bump: $BUMP)"
           echo "Image tags : $IMAGE_TAGS"
+          echo "Staged src : ${IMAGE}:scan-${RESOLVED_SOURCE_SHA}"
 
-          echo "skip=false"           >> "$GITHUB_OUTPUT"
-          echo "new_tag=$NEW_TAG"     >> "$GITHUB_OUTPUT"
-          echo "bump=$BUMP"           >> "$GITHUB_OUTPUT"
-          echo "image_tags=$IMAGE_TAGS" >> "$GITHUB_OUTPUT"
+          echo "skip=false"                             >> "$GITHUB_OUTPUT"
+          echo "new_tag=$NEW_TAG"                       >> "$GITHUB_OUTPUT"
+          echo "bump=$BUMP"                             >> "$GITHUB_OUTPUT"
+          echo "image_tags=$IMAGE_TAGS"                 >> "$GITHUB_OUTPUT"
+          echo "source_sha=${RESOLVED_SOURCE_SHA}"      >> "$GITHUB_OUTPUT"
 
       # ── Step 2: Login to DockerHub ───────────────────────────────────────────
       - name: Login to DockerHub
@@ -148,62 +182,54 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # ── Step 3: Build Docker image (no push yet) ─────────────────────────────
-      - name: Build Docker image
+      # ── Step 3: Obtain the scanned image (pull staged, fallback: build) ──────
+      - name: Pull staged scanned image
+        id: staged
         if: steps.version.outputs.skip != 'true'
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: false
-          load: true
-          tags: ${{ steps.version.outputs.image_tags }}
-          build-args: |
-            VERSION=${{ steps.version.outputs.new_tag }}
-
-      # ── Step 3.5: Trivy GATE — block the tag + push on HIGH/CRITICAL ─────────
-      - name: Install Trivy
-        if: steps.version.outputs.skip != 'true'
+        continue-on-error: true
         run: |
-          TRIVY_VERSION=0.71.0
-          wget -qO /tmp/trivy.tar.gz \
-            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
-          sudo tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
+          STAGED="${DOCKERHUB_IMAGE}:scan-${{ steps.version.outputs.source_sha }}"
+          echo "Pulling $STAGED ..."
+          docker pull "$STAGED"
 
-      - name: Trivy scan (blocks tag + push)
-        if: steps.version.outputs.skip != 'true'
+      - name: Fallback build (only if staged image missing)
+        if: steps.version.outputs.skip != 'true' && steps.staged.outcome == 'failure'
         run: |
-          FIRST_TAG=$(echo "${{ steps.version.outputs.image_tags }}" | cut -d',' -f1)
-          trivy image --severity HIGH,CRITICAL --scanners vuln --exit-code 1 "$FIRST_TAG"
+          STAGED="${DOCKERHUB_IMAGE}:scan-${{ steps.version.outputs.source_sha }}"
+          echo "::warning::Staged image $STAGED not found — falling back to a local build (unscanned!)."
+          echo "::warning::This happens if the original scanned image was deleted or the tag resolution failed."
+          docker build -t "$STAGED" .
 
-      - name: Notify Slack (Trivy passed)
+      # ── Step 4: Re-tag staged image & push semver tags (no rebuild) ──────────
+      - name: Promote staged image to release tags
         if: steps.version.outputs.skip != 'true'
+        id: push
         run: |
-          curl -sS -X POST -H 'Content-type: application/json' \
-            --data "{\"text\": \"✅ *${{ github.repository }}: Trivy scan passed* — no HIGH/CRITICAL. Proceeding to tag + push \`${{ steps.version.outputs.new_tag }}\`.\"}" \
-            "${{ secrets.SLACK_WEBHOOK_URL }}" || true
+          STAGED="${DOCKERHUB_IMAGE}:scan-${{ steps.version.outputs.source_sha }}"
 
-      # ── Step 4: Create git tag (only if build succeeded) ────────────────────
+          echo "${{ steps.version.outputs.image_tags }}" | tr ',' '\n' | while read tag; do
+            echo "Promoting $STAGED → $tag"
+            docker tag "$STAGED" "$tag"
+            docker push "$tag"
+          done
+
+          # Digest lookup on the locally-present staged image
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$STAGED" 2>/dev/null | cut -d'@' -f2 || true)
+          echo "image_digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      # ── Step 5: Create git tag (AFTER image push, pointing at scanned SHA) ───
       - name: Create git tag
         if: steps.version.outputs.skip != 'true'
         run: |
           NEW_TAG="${{ steps.version.outputs.new_tag }}"
+          # Tag the RESOLVED source commit, not checkout HEAD. This keeps the whole
+          # chain (devnet-v → testnet-v → v) pointing at the ONE commit whose
+          # scan-<sha> image exists, so every promotion level can reuse it.
           git tag -a "$NEW_TAG" \
-            -m "Release $NEW_TAG (bump: ${{ steps.version.outputs.bump }})"
+            -m "Release $NEW_TAG (bump: ${{ steps.version.outputs.bump }})" \
+            "${{ steps.version.outputs.source_sha }}"
           git push origin "$NEW_TAG"
-          echo "Git tag pushed: $NEW_TAG"
-
-      # ── Step 5: Push Docker image (only if git tag succeeded) ───────────────
-      - name: Push Docker image to DockerHub
-        id: push
-        if: steps.version.outputs.skip != 'true'
-        run: |
-          echo "${{ steps.version.outputs.image_tags }}" | tr ',' '\n' | while read tag; do
-            echo "Pushing $tag ..."
-            docker push "$tag"
-          done
-          FIRST_TAG=$(echo "${{ steps.version.outputs.image_tags }}" | cut -d',' -f1)
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$FIRST_TAG" | cut -d'@' -f2)
-          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+          echo "Git tag pushed: $NEW_TAG → ${{ steps.version.outputs.source_sha }}"
 
       # ── Step 6: Create GitHub Release (mainnet only) ────────────────────────
       - name: Create GitHub Release
@@ -218,23 +244,30 @@ jobs:
       - name: Notify Slack (Success)
         if: success() && steps.version.outputs.skip != 'true'
         run: |
-          curl -X POST -H 'Content-type: application/json' \
+          if [ "${{ steps.staged.outcome }}" = "success" ]; then
+            SCAN_NOTE="✅ *Promoted from scanned staged image. Deployment not triggered.*"
+          else
+            SCAN_NOTE="⚠️ *Staged image missing — rebuilt locally (NOT re-scanned). Deployment not triggered.*"
+          fi
+          curl -sS -X POST -H 'Content-type: application/json' \
           --data "{
-            \"text\": \"🚀 <!channel> *Deployment Successful*\n\n\
+            \"text\": \"🐳 <!channel> *Docker Image Published*\n\n\
             🧾 *Repo:* ${{ github.repository }}\n\
             🏷️ *Git Tag:* ${{ steps.version.outputs.new_tag }}\n\
             🐳 *Docker Image:* ${{ steps.version.outputs.image_tags }}\n\
-            🔑 *Image SHA:* ${{ steps.push.outputs.digest }}\n\
             🌿 *Branch:* ${{ github.base_ref }}\n\
             👤 *Triggered by:* ${{ github.actor }}\n\
-            🔗 *Docker Hub:* https://hub.docker.com/r/${{ env.DOCKERHUB_IMAGE }}\"
+            🔎 *Git Commit ID:* \`${{ steps.version.outputs.source_sha }}\`\n\
+            🔗 *Docker Hub:* https://hub.docker.com/r/${{ env.DOCKERHUB_IMAGE }}\n\
+            🔑 *Image Digest:* ${{ steps.push.outputs.image_digest }}\n\
+            ${SCAN_NOTE}\"
             }" \
-            ${{ secrets.SLACK_WEBHOOK_URL }}
+            ${{ secrets.SLACK_WEBHOOK_URL }} || true
 
       - name: Notify Slack (Skipped)
         if: steps.version.outputs.skip == 'true'
         run: |
-          curl -X POST -H 'Content-type: application/json' \
+          curl -sS -X POST -H 'Content-type: application/json' \
           --data "{
             \"text\": \"⏭️ <!channel> *Deployment Skipped*\n\n\
             🧾 *Repo:* ${{ github.repository }}\n\
@@ -242,12 +275,12 @@ jobs:
             👤 *Triggered by:* ${{ github.actor }}\n\
             ⚠️ *Reason:* No patch/minor/major label or branch already up to date\"
             }" \
-            ${{ secrets.SLACK_WEBHOOK_URL }}
+            ${{ secrets.SLACK_WEBHOOK_URL }} || true
 
-      - name: Notify Slack (Failure)  
+      - name: Notify Slack (Failure)
         if: failure()
         run: |
-          curl -X POST -H 'Content-type: application/json' \
+          curl -sS -X POST -H 'Content-type: application/json' \
           --data "{
             \"text\": \"❌ <!channel> *Deployment Failed*\n\n\
             🧾 *Repo:* ${{ github.repository }}\n\
@@ -255,4 +288,4 @@ jobs:
             👤 *Triggered by:* ${{ github.actor }}\n\
             🔗 *Logs:* https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
             }" \
-            ${{ secrets.SLACK_WEBHOOK_URL }}
+            ${{ secrets.SLACK_WEBHOOK_URL }} || true
