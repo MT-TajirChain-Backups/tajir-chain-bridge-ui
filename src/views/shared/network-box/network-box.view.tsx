@@ -63,6 +63,9 @@ export const NetworkBox: FC = () => {
   const name = env.networkName;
   const symbol = env.networkSymbol;
 
+  const isLoginNetworkSetup = connectedProvider.status === "reloading";
+  const isZkEvmDiscovered = discoveredChainIds.includes(polygonZkEVMChain.chainId);
+
   const successMsg: Message = {
     text: `${polygonZkEVMChain.name} network successfully added`,
     type: "success-msg",
@@ -152,14 +155,19 @@ export const NetworkBox: FC = () => {
             className={classes.button}
             disabled={
               isAddNetworkButtonDisabled ||
-              discoveredChainIds.includes(polygonZkEVMChain.chainId) ||
+              (isZkEvmDiscovered && !isLoginNetworkSetup) ||
               (isAsyncTaskDataAvailable(connectedProvider) &&
-                connectedProvider.data.chainId === polygonZkEVMChain.chainId)
+                connectedProvider.data.chainId === polygonZkEVMChain.chainId &&
+                !isLoginNetworkSetup)
             }
             onClick={onAddNetwork}
           >
             <WalletConnectIcon className={classes.buttonIcon} />
-            {discoveredChainIds.includes(polygonZkEVMChain.chainId) ? "Network Added" : "Add To Wallet"}
+            {isLoginNetworkSetup && isZkEvmDiscovered
+              ? "Continue to Bridge"
+              : isZkEvmDiscovered
+                ? "Network Added"
+                : "Add To Wallet"}
           </button>
           <a
             className={classes.button}
