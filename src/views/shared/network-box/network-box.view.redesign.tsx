@@ -90,10 +90,17 @@ export const NetworkBoxRedesign = () => {
   }, [discoveredChainIds, activeChainInBox]);
 
   const isConnected = isAsyncTaskDataAvailable(connectedProvider);
+  const isLoginNetworkSetup = connectedProvider.status === "reloading";
 
   const buttonText = useMemo(() => {
     if (!isConnected) {
       return "Connect Wallet First";
+    }
+
+    // During mobile login setup, allow Continue even if localStorage already
+    // marked the chain — that flag does not unlock home by itself.
+    if (isNetworkAlreadyAdded && isLoginNetworkSetup) {
+      return "Continue to Bridge";
     }
 
     if (isNetworkAlreadyAdded) {
@@ -101,7 +108,7 @@ export const NetworkBoxRedesign = () => {
     }
     const networkName = activeChainInBox?.name ?? "";
     return window.innerWidth < 788 ? `Add ${networkName}` : `Add ${networkName} To Wallet`;
-  }, [isConnected, isNetworkAlreadyAdded, activeChainInBox]);
+  }, [isConnected, isNetworkAlreadyAdded, isLoginNetworkSetup, activeChainInBox]);
 
   // const name = env?.networkName;
   const symbol = env?.networkSymbol;
@@ -256,7 +263,11 @@ export const NetworkBoxRedesign = () => {
         </div>
         <button
           className={classes.button}
-          disabled={isAddNetworkButtonDisabled || isNetworkAlreadyAdded || !isConnected}
+          disabled={
+            isAddNetworkButtonDisabled ||
+            !isConnected ||
+            (isNetworkAlreadyAdded && !isLoginNetworkSetup)
+          }
           onClick={onAddNetwork}
         >
           <div className={classes.buttonIconAndTitle}>{buttonText}</div>

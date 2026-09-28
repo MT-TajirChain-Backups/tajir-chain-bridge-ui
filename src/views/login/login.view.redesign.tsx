@@ -11,6 +11,7 @@ import { useProvidersContext } from "src/contexts/providers.context";
 import { EthereumChainId, PolicyCheck } from "src/domain";
 import { routes } from "src/routes";
 import { getDeploymentName } from "src/utils/labels";
+import { isMobileDevice } from "src/utils/mobile";
 import { useLoginRedesignStyles } from "src/views/login/login.styles";
 import { ConfirmationModal } from "src/views/shared/confirmation-modal/confirmation-modal.view";
 import { ErrorMessage } from "src/views/shared/error-message/error-message.view";
@@ -76,7 +77,13 @@ export const LoginRedesign: FC = () => {
         <div className={classes.cardWrap}>
           <WalletListRedesign onSelectWallet={onCheckAndConnectProvider} />
           {connectedProvider.status === "reloading" && (
-            <InfoBanner message="Check your wallet — approve Add Network Requests" />
+            <InfoBanner
+              message={
+                isMobileDevice()
+                  ? "Return from MetaMask, then approve Add Network — or use Add a network below"
+                  : "Check your wallet — approve Add Network Requests"
+              }
+            />
           )}
           {connectedProvider.status === "failed" && connectedProvider.error !== "Disconnected" && (
             <ErrorMessage error={connectedProvider.error} />
