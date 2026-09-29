@@ -9,7 +9,6 @@ import { useEnvContext } from "src/contexts/env.context";
 import { useProvidersContext } from "src/contexts/providers.context";
 import { EthereumChainId, PolicyCheck } from "src/domain";
 import { routes } from "src/routes";
-import { getDeploymentName } from "src/utils/labels";
 import { isMobileDevice } from "src/utils/mobile";
 import { WalletList } from "src/views/login/components/wallet-list/wallet-list.view";
 import { useLoginStyles } from "src/views/login/login.styles";
@@ -69,7 +68,6 @@ export const Login: FC = () => {
 
   const logo = env.logoPath;
   const ethereumChain = env.chains[0];
-  const deploymentName = getDeploymentName(ethereumChain);
 
   return (
     <div className={classes.login}>
@@ -121,7 +119,7 @@ export const Login: FC = () => {
           onClose={() => setShowPolicyModal(false)}
           onConfirm={onConnectProvider}
           showCancelButton={false}
-          title={`Welcome to the Tajir Bridge${deploymentName ? ` ${deploymentName}` : ""}`}
+          title="Welcome to the Tajir Bridge"
         />
       )}
     </div>
