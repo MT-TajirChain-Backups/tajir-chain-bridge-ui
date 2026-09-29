@@ -39,19 +39,6 @@ export function getEthereumNetworkName(chainId: number): string {
   }
 }
 
-export function getDeploymentName(chain: Chain): string | undefined {
-  switch (chain.chainId) {
-    case EthereumChainId.MAINNET: {
-      return "Mainnet Beta";
-    }
-    case EthereumChainId.GOERLI: {
-      return "Testnet";
-    }
-    default: {
-      return undefined;
-    }
-  }
-}
 
 type CurrencySymbol = "€" | "$" | "¥" | "£";
 
