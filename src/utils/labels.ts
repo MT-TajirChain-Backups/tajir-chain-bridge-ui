@@ -1,4 +1,4 @@
-import { Bridge, Chain, Currency, EthereumChainId } from "src/domain";
+import { Bridge, Currency, EthereumChainId } from "src/domain";
 
 export function getBridgeStatus(status: Bridge["status"], from: Bridge["from"]): string {
   switch (status) {
