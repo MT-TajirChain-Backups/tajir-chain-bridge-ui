@@ -306,7 +306,7 @@ export const BridgeConfirmationRedesign: FC = () => {
                   setApprovalTask({ status: "pending" });
                 } else {
                   setApprovalTask({ error: parsed, status: "failed" });
-                  notifyError(parsed);
+                  notifyError(error);
                 }
               });
             }
@@ -431,62 +431,67 @@ export const BridgeConfirmationRedesign: FC = () => {
 
   return (
     <div className={classes.contentWrapper}>
-      <HeaderRedesign backTo={{ routeKey: "home" }} title="Confirm Bridge" />
-      <CardRedesign className={classes.card}>
-        <div className={classes.amountBox}>
-          {token.logoURI ? (
-            <Icon className={classes.tokenIcon} isRounded size={20} url={token.logoURI} />
-          ) : (
-            <img
-              alt={token.name}
-              className={classes.tokenIcon}
-              src={token.logoURI}
-              style={{ borderRadius: "50%", height: 46, width: 46 }}
-            />
-          )}
-          <Typography type="h1">{tokenAmountString}</Typography>
-          {fiatAmountString && (
-            <Typography className={classes.fiat} type="body2">
-              {fiatAmountString}
-            </Typography>
-          )}
-        </div>
-        <div className={classes.chainsRow}>
-          <div className={classes.chainBox}>
-            <from.Icon />
-            <Typography className={classes.chainName} type="body1">
-              {from.name}
-            </Typography>
+      <HeaderRedesign backTo={{ routeKey: "home" }} />
+      <div className={classes.centeredContent}>
+        <Typography className={classes.title} type="h1">
+          Confirm Bridge
+        </Typography>
+        <CardRedesign className={classes.card}>
+          <div className={classes.amountBox}>
+            {token.logoURI ? (
+              <Icon className={classes.tokenIcon} isRounded size={20} url={token.logoURI} />
+            ) : (
+              <img
+                alt={token.name}
+                className={classes.tokenIcon}
+                src={token.logoURI}
+                style={{ borderRadius: "50%", height: 46, width: 46 }}
+              />
+            )}
+            <Typography type="h1">{tokenAmountString}</Typography>
+            {fiatAmountString && (
+              <Typography className={classes.fiat} type="body2">
+                {fiatAmountString}
+              </Typography>
+            )}
           </div>
-          <ArrowRightIcon className={classes.arrowIcon} />
-          <div className={classes.chainBox}>
-            <to.Icon />
-            <Typography className={classes.chainName} type="body1">
-              {to.name}
-            </Typography>
+          <div className={classes.chainsRow}>
+            <div className={classes.chainBox}>
+              <from.Icon />
+              <Typography className={classes.chainName} type="body1">
+                {from.name}
+              </Typography>
+            </div>
+            <ArrowRightIcon className={classes.arrowIcon} />
+            <div className={classes.chainBox}>
+              <to.Icon />
+              <Typography className={classes.chainName} type="body1">
+                {to.name}
+              </Typography>
+            </div>
           </div>
-        </div>
-        <div className={classes.feeBlock}>
-          <Typography type="body2">Estimated gas fee</Typography>
-          <div className={classes.fee}>
-            <Icon isRounded size={20} url={gasFeeIconUrl} />
-            <Typography type="body1">{feeString}</Typography>
+          <div className={classes.feeBlock}>
+            <Typography type="body2">Estimated gas fee</Typography>
+            <div className={classes.fee}>
+              <Icon isRounded size={20} url={gasFeeIconUrl} />
+              <Typography type="body1">{feeString}</Typography>
+            </div>
           </div>
+        </CardRedesign>
+        <div className={classes.button}>
+          <BridgeButton
+            approvalTask={approvalTask}
+            isDisabled={maxAmountConsideringFee.lte(0) || isBridgeInProgress}
+            isTxApprovalRequired={tokenSpendPermission.type === "approval"}
+            onApprove={onApprove}
+            onBridge={onBridge}
+            token={token}
+          />
+          {tokenSpendPermission.type === "approval" && <ApprovalInfo />}
+          {error && <ErrorMessage error={error} />}
         </div>
-      </CardRedesign>
-      <div className={classes.button}>
-        <BridgeButton
-          approvalTask={approvalTask}
-          isDisabled={maxAmountConsideringFee.lte(0) || isBridgeInProgress}
-          isTxApprovalRequired={tokenSpendPermission.type === "approval"}
-          onApprove={onApprove}
-          onBridge={onBridge}
-          token={token}
-        />
-        {tokenSpendPermission.type === "approval" && <ApprovalInfo />}
-        {error && <ErrorMessage error={error} />}
+        {feeErrorString && <ErrorMessage className={classes.error} error={feeErrorString} />}
       </div>
-      {feeErrorString && <ErrorMessage className={classes.error} error={feeErrorString} />}
     </div>
   );
 };

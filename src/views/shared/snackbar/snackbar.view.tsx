@@ -38,6 +38,7 @@ export const Snackbar: FC<SnackbarProps> = ({ message, onClose, onReport, report
 
   const getDisplayText = () => {
     if (message.type !== "error") { return message.text; }
+    if (message.text) { return message.text; }
     const parsedStr = message.parsed || "";
     const splitIndex = parsedStr.indexOf("\n>>>>>>>>>> Stringification");
     const actualMessage = splitIndex !== -1 ? parsedStr.substring(0, splitIndex) : parsedStr;
