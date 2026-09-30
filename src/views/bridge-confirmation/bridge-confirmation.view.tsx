@@ -305,7 +305,7 @@ export const BridgeConfirmation: FC = () => {
                   setApprovalTask({ status: "pending" });
                 } else {
                   setApprovalTask({ error: parsed, status: "failed" });
-                  notifyError(parsed);
+                  notifyError(error);
                 }
               });
             }

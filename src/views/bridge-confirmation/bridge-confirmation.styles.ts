@@ -144,6 +144,13 @@ export const useBridgeConfirmationRedesignStyles = createUseStyles((theme: Theme
     padding: theme.spacing(2),
     width: "100%",
   },
+  centeredContent: {
+    display: "flex",
+    flex: 1,
+    flexDirection: "column",
+    justifyContent: "center",
+    padding: [theme.spacing(3), 0],
+  },
   chainBox: {
     alignItems: "center",
     backgroundColor: theme.palette.grey.light,
@@ -183,6 +190,9 @@ export const useBridgeConfirmationRedesignStyles = createUseStyles((theme: Theme
     },
   },
   contentWrapper: {
+    display: "flex",
+    flex: 1,
+    flexDirection: "column",
     padding: [0, theme.spacing(5)],
     [theme.breakpoints.downM]: {
       padding: [0, theme.spacing(3)],
@@ -212,6 +222,9 @@ export const useBridgeConfirmationRedesignStyles = createUseStyles((theme: Theme
     alignItems: "center",
     display: "flex",
     gap: theme.spacing(1),
+  },
+  title: {
+    textAlign: "center",
   },
   tokenIcon: {
     borderRadius: "50%",
