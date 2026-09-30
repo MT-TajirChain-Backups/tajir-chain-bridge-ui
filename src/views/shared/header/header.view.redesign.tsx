@@ -11,7 +11,7 @@ import { Typography } from "src/views/shared/typography/typography.view";
 type HeaderProps = {
   Subtitle?: ReactElement;
   backTo: { routeKey: keyof typeof routes; state?: RouterState };
-  title: string;
+  title?: string;
 };
 
 export const HeaderRedesign: FC<HeaderProps> = ({ backTo, Subtitle, title }) => {
@@ -29,7 +29,7 @@ export const HeaderRedesign: FC<HeaderProps> = ({ backTo, Subtitle, title }) => 
           </button>
         </div>
         <div className={`${classes.block} ${classes.centerBlock}`}>
-          <Typography type="h1">{title}</Typography>
+          {title && <Typography type="h1">{title}</Typography>}
         </div>
         <div className={`${classes.block} ${classes.rightBlock}`}>
           <NetworkSelectorRedesign />
